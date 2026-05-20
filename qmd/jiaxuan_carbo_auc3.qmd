@@ -1,0 +1,1685 @@
+---
+title: "Jiaxuan Project — Carboplatin AUC ≥ 3 Cohort"
+author: "Tianqi Ouyang"
+date: "2026-04-09"
+execute:
+  eval: true
+  warning: false
+  message: false
+---
+
+# 1 Setup
+
+```{r}
+#| label: setup-jx-carbo
+# Force UTF-8 locale so kable captions and other strings render real Unicode
+# (e.g. em-dash) instead of <U+2014> escape sequences.
+invisible(Sys.setlocale("LC_ALL", "en_US.UTF-8"))
+library(tidyverse)
+library(scales)
+library(ggplot2)
+library(tidycmprsk)
+library(ggsurvfit)
+library(gtsummary)
+library(flextable)
+
+# Output directory for downloadable Word tables
+docx_dir <- "docs/tables/auc3"
+dir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)
+
+save_tbl_docx <- function(tbl, docx_name) {
+  ft <- gtsummary::as_flex_table(tbl)
+  flextable::save_as_docx(ft, path = file.path(docx_dir,
+                                               paste0(docx_name, ".docx")))
+  invisible(tbl)
+}
+
+# Load whole-cohort data, then keep only carboplatin patients
+dat <- readRDS("jiaxuan_final_master.rds") %>%
+  filter(platin_group == "Carboplatin", carbo_AUC >= 3)
+
+# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault
+# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for
+# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in
+# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.
+dat <- dat %>%
+  mutate(
+    # Capped versions (for dose discrepancy calculations)
+    cockcroft_cap125 = pmin(cockcroft, 125),
+    # ckd_epi_gfr_cre_cys_unindex_cap125 already exists in data
+    # Ratio uses UNCAPPED eGFR
+    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,
+    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale
+    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,
+    # Dose discrepancy uses CAPPED eGFR (already computed in jiaxuan_data.qmd)
+    dose_discrep_per25increase = dose_discrepancy / 25,
+    abs_dose_discrep = abs(dose_discrepancy),
+    abs_dose_discrep_cat = cut(abs_dose_discrep,
+      breaks = c(0, 25, 50, 75, 100, Inf),
+      labels = c("<25", "25-49.99", "50-74.99", "75-99.99", ">=100"),
+      right = FALSE, include.lowest = TRUE),
+    # Binary exposure for adjusted CIF curves (Section 14): 1 if patient was
+    # over-dosed by 25 mg or more (actual - predicted >= 25), else 0.
+    dose_discrep_ge25 = as.integer(dose_discrepancy >= 25),
+    # Signed dose discrepancy = actual - predicted; 10 bins symmetric around 0.
+    signed_dose_discrep_cat = cut(dose_discrepancy,
+      breaks = c(-Inf, -100, -75, -50, -25, 0, 25, 50, 75, 100, Inf),
+      labels = c("<=-100", "-99.99 to -75", "-74.99 to -50",
+                 "-49.99 to -25", "-24.99 to 0",
+                 "0 to 24.99", "25 to 49.99", "50 to 74.99",
+                 "75 to 99.99", ">=100"),
+      right = FALSE, include.lowest = TRUE),
+    cockcroft_per10 = cockcroft / 10,
+    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10
+  )
+
+cat("Carboplatin AUC >= 3 cohort N =", nrow(dat), "\n")
+```
+
+# 2 Actual vs Predicted Dose (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-dose-overlay
+#| fig-width: 8
+#| fig-height: 5
+dose_long <- dat %>%
+  select(record_id, carbo_dose_redcap, carbo_dose_cre_cys) %>%
+  pivot_longer(
+    cols = c(carbo_dose_redcap, carbo_dose_cre_cys),
+    names_to = "dose_type", values_to = "dose_mg"
+  ) %>%
+  filter(!is.na(dose_mg)) %>%
+  mutate(dose_type = case_match(dose_type,
+    "carbo_dose_redcap"  ~ "Actual (REDCap)",
+    "carbo_dose_cre_cys" ~ "Predicted (CKD-EPI Cr-Cys)"
+  ))
+
+ggplot(dose_long, aes(x = dose_mg, fill = dose_type)) +
+  geom_histogram(alpha = 0.5, bins = 40, position = "identity", color = "black") +
+  scale_fill_manual(values = c("Actual (REDCap)" = "#E31A1C",
+                                "Predicted (CKD-EPI Cr-Cys)" = "#1F78B4")) +
+  labs(title = "Carboplatin Dose Distribution (AUC ≥ 3)",
+       x = "Dose (mg)", y = "Number of Patients", fill = "Dose Type") +
+  theme_minimal(base_size = 14)
+```
+
+## 2.2 Signed Dose Discrepancy Distribution
+
+Smooth kernel density estimate of the signed dose discrepancy (actual − predicted, CKD-EPI Cr-Cys). The area under the curve is shaded by sign — negative (under-dosed region) on one side, positive on the other.
+
+```{r}
+#| label: jx-auc3-dose-discrep-hist
+#| fig-width: 9
+#| fig-height: 5
+dose_vals <- dat %>%
+  filter(!is.na(dose_discrepancy)) %>%
+  pull(dose_discrepancy)
+
+dens <- density(dose_vals, n = 512)
+y_at_zero <- approx(dens$x, dens$y, xout = 0)$y
+
+dens_df <- tibble(x = dens$x, y = dens$y) %>%
+  bind_rows(tibble(x = 0, y = y_at_zero)) %>%
+  arrange(x)
+
+neg_part <- dens_df %>% filter(x <= 0) %>% mutate(side = "neg")
+pos_part <- dens_df %>% filter(x >= 0) %>% mutate(side = "pos")
+plot_df  <- bind_rows(neg_part, pos_part)
+
+ggplot() +
+  geom_area(data = plot_df, aes(x = x, y = y, fill = side), alpha = 0.6) +
+  geom_line(data = dens_df, aes(x = x, y = y), linewidth = 0.6, color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  scale_fill_manual(values = c(neg = "#E31A1C", pos = "#1F78B4"),
+                    guide = "none") +
+  coord_cartesian(xlim = c(-250, 250)) +
+  labs(title = "Distribution of Signed Dose Discrepancy (Carboplatin AUC ≥ 3)",
+       x = "Dose Discrepancy (mg) = actual - predicted",
+       y = "Density") +
+  theme_minimal(base_size = 13)
+```
+
+# 3 Table 1: Baseline Characteristics (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-table1-carbo
+dat %>%
+  dplyr::select(
+    age, age_cat, sex, race, ethnicity, tumor_stage, cancer_type_cat_7,
+    carbo_AUC, carbo_AUC_cat,
+    ici, Bevacizumab, Paclitaxel, Pemetrexed, Doxorubicin, Etoposide,
+    Gemcitabine, Pertuzumab, Trastuzumab, Docetaxel, other_chemo, Administered_alone,
+    hiv_rpdr, thyroid, smoking, steroids,
+    cci, score, ecog_score, bmi, bmi_cat,
+    pre_HGB_45days, pre_PLT_45days, pre_ALB_45days,
+    baseline_cys_c, baseline_cre, cr_cys,
+    baseline_cre_egfr, baseline_cys_c_egfr,
+    ckd_epi_gfr_cre_cys, ckd_epi_gfr_cre_cys_unindex,
+    cockcroft, egfr_ratio
+  ) %>%
+  tbl_summary(
+    statistic = list(age ~ "{mean} ({sd})")
+  )
+```
+
+# 4 eGFR Ratio Distribution (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-egfr-ratio-hist
+#| fig-width: 8
+#| fig-height: 5
+ratio_hist <- dat %>% filter(!is.na(egfr_ratio))
+
+ggplot(ratio_hist, aes(x = egfr_ratio)) +
+  geom_histogram(aes(y = after_stat(count) / sum(after_stat(count)) * 100),
+                 binwidth = 0.1, boundary = 0,
+                 fill = "steelblue", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  labs(title = "Distribution of eGFR Ratio (Carboplatin AUC ≥ 3)",
+       x = "eGFR Ratio",
+       y = "Percent of Patients (%)") +
+  scale_x_continuous(breaks = seq(0, 3, 0.2)) +
+  theme_minimal(base_size = 14)
+```
+
+# 5 Fine-Gray Models — eGFR Ratio (adjusted for Cockcroft-Gault) (Carboplatin AUC ≥ 3)
+
+Each table below shows univariable (one variable at a time) and multivariable Fine-Gray subdistribution hazard ratios side-by-side. A Word version of every table is saved during render — click any link below to download:
+
+- [Anemia Grade 2](../tables/auc3/sec5_anemia_2.docx) · [Anemia Grade 3](../tables/auc3/sec5_anemia_3.docx)
+- [Thrombocytopenia Grade 2](../tables/auc3/sec5_throm_2.docx) · [Thrombocytopenia Grade 3](../tables/auc3/sec5_throm_3.docx)
+- [AKI Grade 2](../tables/auc3/sec5_aki_2.docx) · [AKI (KDIGO)](../tables/auc3/sec5_aki_kdigo.docx)
+- [Composite Grade 2 AEs](../tables/auc3/sec5_grade_2_aes.docx) · [Composite Grade 3 AEs](../tables/auc3/sec5_grade_3_aes.docx)
+- [Overall Hospitalization](../tables/auc3/sec5_any_hosp.docx) · [Platinum-Related Hospitalization](../tables/auc3/sec5_side_effect.docx)
+- [90-Day Death (Cox PH)](../tables/auc3/sec5_death_90.docx)
+
+```{r}
+#| label: jx-auc3-fg-helper
+.adj_set <- function(pre_labs, egfr_adj) {
+  adj <- c("age","sex","score","ecog_score_cat2",
+           "cancer_type_cat_7","tumor_stage","high_dose",
+           "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+           "bmi","smoking","steroids","thyroid")
+  if (egfr_adj == "cockcroft") adj <- c(adj, "cockcroft")
+  if (egfr_adj == "ckd_epi")   adj <- c(adj, "ckd_epi_gfr_cre_cys_unindex")
+  if (!is.null(pre_labs)) adj <- c(adj, pre_labs)
+  adj
+}
+
+# fg_model: returns univariable + multivariable merged Fine-Gray table.
+# If docx_name is supplied, also saves the table as a .docx in docx_dir.
+fg_model <- function(time_var, status_var, pred_var, pre_labs = NULL,
+                     egfr_adj = c("none", "cockcroft", "ckd_epi"),
+                     docx_name = NULL) {
+  egfr_adj <- match.arg(egfr_adj)
+  adj <- .adj_set(pre_labs, egfr_adj)
+  all_vars <- c(pred_var, adj)
+
+  fmla_mv <- as.formula(paste0(
+    "Surv(", time_var, ", ", status_var, ") ~ ",
+    paste(all_vars, collapse = " + ")
+  ))
+  tbl_mv <- tidycmprsk::crr(fmla_mv, failcode = 1, data = dat) %>%
+    tbl_regression(exp = TRUE,
+                   pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+    add_n()
+
+  y_call <- str2lang(sprintf("Surv(%s, %s)", time_var, status_var))
+  tbl_uv <- rlang::inject(
+    tbl_uvregression(
+      data = dat,
+      method = tidycmprsk::crr,
+      y = !!y_call,
+      include = dplyr::all_of(all_vars),
+      exponentiate = TRUE,
+      pvalue_fun = function(x) style_pvalue(x, digits = 3),
+      method.args = list(failcode = 1)
+    )
+  )
+
+  out <- tbl_merge(
+    tbls = list(tbl_uv, tbl_mv),
+    tab_spanner = c("**Univariable**", "**Multivariable**")
+  )
+
+  if (!is.null(docx_name)) save_tbl_docx(out, docx_name)
+  out
+}
+
+cox_model <- function(time_var, status_var, pred_var, pre_labs = NULL,
+                      egfr_adj = c("none", "cockcroft", "ckd_epi"),
+                      docx_name = NULL) {
+  egfr_adj <- match.arg(egfr_adj)
+  adj <- .adj_set(pre_labs, egfr_adj)
+  all_vars <- c(pred_var, adj)
+
+  fmla_mv <- as.formula(paste0(
+    "Surv(", time_var, ", ", status_var, ") ~ ",
+    paste(all_vars, collapse = " + ")
+  ))
+  tbl_mv <- survival::coxph(fmla_mv, data = dat) %>%
+    tbl_regression(exp = TRUE,
+                   pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+    add_n()
+
+  y_call <- str2lang(sprintf("Surv(%s, %s)", time_var, status_var))
+  tbl_uv <- rlang::inject(
+    tbl_uvregression(
+      data = dat,
+      method = survival::coxph,
+      y = !!y_call,
+      include = dplyr::all_of(all_vars),
+      exponentiate = TRUE,
+      pvalue_fun = function(x) style_pvalue(x, digits = 3)
+    )
+  )
+
+  out <- tbl_merge(
+    tbls = list(tbl_uv, tbl_mv),
+    tab_spanner = c("**Univariable**", "**Multivariable**")
+  )
+
+  if (!is.null(docx_name)) save_tbl_docx(out, docx_name)
+  out
+}
+```
+
+## 4.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-fg-cg-anemia2
+fg_model("cmp_time_anemia_2", "cmp_status_anemia_2", "egfr_ratio_per10", "pre_HGB_45days", "cockcroft", docx_name = "sec5_anemia_2")
+```
+
+## 4.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-fg-cg-anemia3
+fg_model("cmp_time_anemia_3", "cmp_status_anemia_3", "egfr_ratio_per10", "pre_HGB_45days", "cockcroft", docx_name = "sec5_anemia_3")
+```
+
+## 4.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-fg-cg-throm2
+fg_model("cmp_time_throm_2", "cmp_status_throm_2", "egfr_ratio_per10", "pre_PLT_45days", "cockcroft", docx_name = "sec5_throm_2")
+```
+
+## 4.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-fg-cg-throm3
+fg_model("cmp_time_throm_3", "cmp_status_throm_3", "egfr_ratio_per10", "pre_PLT_45days", "cockcroft", docx_name = "sec5_throm_3")
+```
+
+## 4.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-fg-cg-aki2
+fg_model("cmp_time_aki_2", "cmp_status_aki_2", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_aki_2")
+```
+
+## 4.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-fg-cg-akikdigo
+fg_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_aki_kdigo")
+```
+
+## 4.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-fg-cg-grade2
+fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_grade_2_aes")
+```
+
+## 4.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-fg-cg-grade3
+fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_grade_3_aes")
+```
+
+## 4.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-fg-cg-anyhosp
+fg_model("cmp_time_any_hosp", "cmp_status_any_hosp", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_any_hosp")
+```
+
+## 4.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-fg-cg-sideeffect
+fg_model("cmp_time_side_effect", "cmp_status_side_effect", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_side_effect")
+```
+
+## 4.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-cox-cg-death
+cox_model("time_to_death_90", "death_90", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_death_90")
+```
+
+# 6 Cause-Specific Hazard Models — eGFR Ratio (adjusted for Cockcroft-Gault) (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-csh-helper
+csh_model <- function(time_var, status_var, pred_var, pre_labs = NULL) {
+  adj <- c("age","sex","score","ecog_score_cat2",
+           "cancer_type_cat_7","tumor_stage","high_dose",
+           "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+           "bmi","smoking","steroids","thyroid","cockcroft")
+  if (!is.null(pre_labs)) adj <- c(adj, pre_labs)
+  d <- dat
+  d$csh_status <- ifelse(d[[status_var]] == 1, 1L, 0L)
+  fmla <- as.formula(paste0(
+    "Surv(", time_var, ", csh_status) ~ ",
+    paste(c(pred_var, adj), collapse = " + ")
+  ))
+  survival::coxph(fmla, data = d) %>%
+    tbl_regression(exp = TRUE,
+                   pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+    add_n()
+}
+```
+
+## 5.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-csh-anemia2
+csh_model("cmp_time_anemia_2", "cmp_status_anemia_2", "egfr_ratio_per10", "pre_HGB_45days")
+```
+
+## 5.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-csh-anemia3
+csh_model("cmp_time_anemia_3", "cmp_status_anemia_3", "egfr_ratio_per10", "pre_HGB_45days")
+```
+
+## 5.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-csh-throm2
+csh_model("cmp_time_throm_2", "cmp_status_throm_2", "egfr_ratio_per10", "pre_PLT_45days")
+```
+
+## 5.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-csh-throm3
+csh_model("cmp_time_throm_3", "cmp_status_throm_3", "egfr_ratio_per10", "pre_PLT_45days")
+```
+
+## 5.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-csh-aki2
+csh_model("cmp_time_aki_2", "cmp_status_aki_2", "egfr_ratio_per10")
+```
+
+## 5.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-csh-akikdigo
+csh_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "egfr_ratio_per10")
+```
+
+## 5.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-csh-grade2
+csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10")
+```
+
+## 5.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-csh-grade3
+csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10")
+```
+
+## 5.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-csh-anyhosp
+csh_model("cmp_time_any_hosp", "cmp_status_any_hosp", "egfr_ratio_per10")
+```
+
+## 5.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-csh-sideeffect
+csh_model("cmp_time_side_effect", "cmp_status_side_effect", "egfr_ratio_per10")
+```
+
+## 5.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-csh-death
+cox_model("time_to_death_90", "death_90", "egfr_ratio_per10", egfr_adj = "cockcroft")
+```
+
+# 7 Fine-Gray Models — Dose Discrepancy per 25 mg (adjusted for Cockcroft-Gault) (Carboplatin AUC ≥ 3)
+
+## 6.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-fg-dd-anemia2
+fg_model("cmp_time_anemia_2", "cmp_status_anemia_2", "dose_discrep_per25increase", "pre_HGB_45days", "cockcroft")
+```
+
+## 6.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-fg-dd-anemia3
+fg_model("cmp_time_anemia_3", "cmp_status_anemia_3", "dose_discrep_per25increase", "pre_HGB_45days", "cockcroft")
+```
+
+## 6.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-fg-dd-throm2
+fg_model("cmp_time_throm_2", "cmp_status_throm_2", "dose_discrep_per25increase", "pre_PLT_45days", "cockcroft")
+```
+
+## 6.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-fg-dd-throm3
+fg_model("cmp_time_throm_3", "cmp_status_throm_3", "dose_discrep_per25increase", "pre_PLT_45days", "cockcroft")
+```
+
+## 6.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-fg-dd-aki2
+fg_model("cmp_time_aki_2", "cmp_status_aki_2", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-fg-dd-akikdigo
+fg_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-fg-dd-grade2
+fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-fg-dd-grade3
+fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-fg-dd-anyhosp
+fg_model("cmp_time_any_hosp", "cmp_status_any_hosp", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-fg-dd-sideeffect
+fg_model("cmp_time_side_effect", "cmp_status_side_effect", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+## 6.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-cox-dd-death
+cox_model("time_to_death_90", "death_90", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+# 8 Cause-Specific Hazard Models — Dose Discrepancy per 25 mg (adjusted for Cockcroft-Gault) (Carboplatin AUC ≥ 3)
+
+## 7.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-csh-dd-anemia2
+csh_model("cmp_time_anemia_2", "cmp_status_anemia_2", "dose_discrep_per25increase", "pre_HGB_45days")
+```
+
+## 7.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-csh-dd-anemia3
+csh_model("cmp_time_anemia_3", "cmp_status_anemia_3", "dose_discrep_per25increase", "pre_HGB_45days")
+```
+
+## 7.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-csh-dd-throm2
+csh_model("cmp_time_throm_2", "cmp_status_throm_2", "dose_discrep_per25increase", "pre_PLT_45days")
+```
+
+## 7.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-csh-dd-throm3
+csh_model("cmp_time_throm_3", "cmp_status_throm_3", "dose_discrep_per25increase", "pre_PLT_45days")
+```
+
+## 7.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-csh-dd-aki2
+csh_model("cmp_time_aki_2", "cmp_status_aki_2", "dose_discrep_per25increase")
+```
+
+## 7.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-csh-dd-akikdigo
+csh_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "dose_discrep_per25increase")
+```
+
+## 7.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-csh-dd-grade2
+csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase")
+```
+
+## 7.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-csh-dd-grade3
+csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase")
+```
+
+## 7.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-csh-dd-anyhosp
+csh_model("cmp_time_any_hosp", "cmp_status_any_hosp", "dose_discrep_per25increase")
+```
+
+## 7.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-csh-dd-sideeffect
+csh_model("cmp_time_side_effect", "cmp_status_side_effect", "dose_discrep_per25increase")
+```
+
+## 7.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-csh-dd-death
+cox_model("time_to_death_90", "death_90", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+```
+
+::: {.callout-note}
+## Why anchor at the median (subHR = 1 at the reference)
+
+Three reasons to anchor at the **median**:
+
+1. **Interpretability**: "A patient with eGFR ratio of 0.8 has ~1.5× the subHR compared to a typical patient (at the median)."
+2. **Stability**: The median sits in the densest part of the data, so estimates near it have the tightest confidence intervals. The CIs fan out as you move away — you can see this in the plots.
+3. **No arbitrary choice**: If we picked 1.0 arbitrarily, the plot would look almost identical here (because median ≈ 1), but in cohorts where the median is 0.9 or 1.1, picking 1.0 would either shift or distort the curve without changing the actual model.
+:::
+
+# 9 Linear subHR Curves — eGFR Ratio (raw scale) (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-helper
+plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
+                                    outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("egfr_ratio", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  adj_df <- d[, c(base_adj, extra_adj), drop = FALSE]
+  X_adj <- model.matrix(~ ., data = adj_df)[, -1, drop = FALSE]
+  X <- cbind(egfr_ratio = d$egfr_ratio, X_adj)
+
+  stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
+  time_num <- as.numeric(d[[time_var]])
+
+  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                     cov1 = X, failcode = 1)
+
+  beta   <- fit$coef[1]
+  V_beta <- fit$var[1, 1]
+
+  ref_x  <- median(d$egfr_ratio, na.rm = TRUE)
+  grid_x <- seq(quantile(d$egfr_ratio, 0.025, na.rm = TRUE),
+                quantile(d$egfr_ratio, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x     = grid_x,
+    subhr = exp(log_hr),
+    lcl   = exp(log_hr - 1.96 * se),
+    ucl   = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = subhr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    labs(x = "CKD-EPI Cr-Cys / CG ratio",
+         y = "subHR (95% CI)",
+         title = outcome_label) +
+    coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
+    theme_minimal(base_size = 11)
+}
+
+plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
+                                  outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("egfr_ratio", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  fmla <- as.formula(paste0(
+    "Surv(", time_var, ", ", status_var, ") ~ egfr_ratio + ",
+    paste(c(base_adj, extra_adj), collapse = " + ")
+  ))
+  fit <- survival::coxph(fmla, data = d)
+
+  beta   <- coef(fit)["egfr_ratio"]
+  V_beta <- vcov(fit)["egfr_ratio", "egfr_ratio"]
+
+  ref_x  <- median(d$egfr_ratio, na.rm = TRUE)
+  grid_x <- seq(quantile(d$egfr_ratio, 0.025, na.rm = TRUE),
+                quantile(d$egfr_ratio, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x   = grid_x,
+    hr  = exp(log_hr),
+    lcl = exp(log_hr - 1.96 * se),
+    ucl = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = hr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    labs(x = "CKD-EPI Cr-Cys / CG ratio",
+         y = "HR (95% CI)",
+         title = outcome_label) +
+    coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
+    theme_minimal(base_size = 11)
+}
+```
+
+## 8.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-anemia2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_anemia_2", "cmp_status_anemia_2",
+                        "pre_HGB_45days", "Anemia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 8.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-anemia3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_anemia_3", "cmp_status_anemia_3",
+                        "pre_HGB_45days", "Anemia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 8.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-throm2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_throm_2", "cmp_status_throm_2",
+                        "pre_PLT_45days", "Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 8.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-throm3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_throm_3", "cmp_status_throm_3",
+                        "pre_PLT_45days", "Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 8.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-aki2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_aki_2", "cmp_status_aki_2",
+                        NULL, "AKI Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 8.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-akikdigo
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
+                        NULL, "AKI (KDIGO) (Carboplatin AUC ≥ 3)")
+```
+
+## 8.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-grade2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
+                        NULL, "Composite Grade 2 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 8.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-grade3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
+                        NULL, "Composite Grade 3 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 8.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-anyhosp
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_any_hosp", "cmp_status_any_hosp",
+                        NULL, "Overall Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 8.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-sideeffect
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_side_effect", "cmp_status_side_effect",
+                        NULL, "Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 8.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-cox-linear-ratio-death
+#| fig-width: 6
+#| fig-height: 4
+plot_cox_linear_ratio("time_to_death_90", "death_90",
+                      NULL, "90-Day Death (Cox PH) (Carboplatin AUC ≥ 3)")
+```
+
+# 10 Linear subHR Curves — eGFR Discrepancy (raw scale) (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-linsubhr-disc-egfr-helper
+plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
+                                       outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("egfr_discrepancy", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  adj_df <- d[, c(base_adj, extra_adj), drop = FALSE]
+  X_adj <- model.matrix(~ ., data = adj_df)[, -1, drop = FALSE]
+  X <- cbind(egfr_discrepancy = d$egfr_discrepancy, X_adj)
+
+  stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
+  time_num <- as.numeric(d[[time_var]])
+
+  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                     cov1 = X, failcode = 1)
+
+  beta   <- fit$coef[1]
+  V_beta <- fit$var[1, 1]
+  se_b   <- sqrt(V_beta)
+
+  q1    <- as.numeric(quantile(d$egfr_discrepancy, 0.25, na.rm = TRUE))
+  q3    <- as.numeric(quantile(d$egfr_discrepancy, 0.75, na.rm = TRUE))
+  iqr_w <- q3 - q1
+  hr1   <- exp(beta);             hr1_l <- exp(beta - 1.96 * se_b);             hr1_u <- exp(beta + 1.96 * se_b)
+  hri   <- exp(beta * iqr_w);     hri_l <- exp(beta * iqr_w - 1.96 * abs(iqr_w) * se_b); hri_u <- exp(beta * iqr_w + 1.96 * abs(iqr_w) * se_b)
+  subtitle_str <- sprintf(
+    "subHR per 1 mL/min: %.2f (%.2f-%.2f)  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
+    hr1, hr1_l, hr1_u, iqr_w, hri, hri_l, hri_u, q1, q3)
+
+  ref_x  <- median(d$egfr_discrepancy, na.rm = TRUE)
+  grid_x <- seq(quantile(d$egfr_discrepancy, 0.025, na.rm = TRUE),
+                quantile(d$egfr_discrepancy, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x     = grid_x,
+    subhr = exp(log_hr),
+    lcl   = exp(log_hr - 1.96 * se),
+    ucl   = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = subhr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    geom_vline(xintercept = c(q1, q3), linetype = "dashed",
+               color = "steelblue", alpha = 0.7) +
+    labs(x = "eGFR Discrepancy (mL/min)",
+         y = "subHR (95% CI)",
+         title = outcome_label,
+         subtitle = subtitle_str) +
+    coord_cartesian(ylim = c(0, 4)) +
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25"))
+}
+
+plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
+                                     outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("egfr_discrepancy", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  fmla <- as.formula(paste0(
+    "Surv(", time_var, ", ", status_var, ") ~ egfr_discrepancy + ",
+    paste(c(base_adj, extra_adj), collapse = " + ")
+  ))
+  fit <- survival::coxph(fmla, data = d)
+
+  beta   <- coef(fit)["egfr_discrepancy"]
+  V_beta <- vcov(fit)["egfr_discrepancy", "egfr_discrepancy"]
+  se_b   <- sqrt(V_beta)
+
+  q1    <- as.numeric(quantile(d$egfr_discrepancy, 0.25, na.rm = TRUE))
+  q3    <- as.numeric(quantile(d$egfr_discrepancy, 0.75, na.rm = TRUE))
+  iqr_w <- q3 - q1
+  hr1   <- exp(beta);             hr1_l <- exp(beta - 1.96 * se_b);             hr1_u <- exp(beta + 1.96 * se_b)
+  hri   <- exp(beta * iqr_w);     hri_l <- exp(beta * iqr_w - 1.96 * abs(iqr_w) * se_b); hri_u <- exp(beta * iqr_w + 1.96 * abs(iqr_w) * se_b)
+  subtitle_str <- sprintf(
+    "HR per 1 mL/min: %.2f (%.2f-%.2f)  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
+    hr1, hr1_l, hr1_u, iqr_w, hri, hri_l, hri_u, q1, q3)
+
+  ref_x  <- median(d$egfr_discrepancy, na.rm = TRUE)
+  grid_x <- seq(quantile(d$egfr_discrepancy, 0.025, na.rm = TRUE),
+                quantile(d$egfr_discrepancy, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x   = grid_x,
+    hr  = exp(log_hr),
+    lcl = exp(log_hr - 1.96 * se),
+    ucl = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = hr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    geom_vline(xintercept = c(q1, q3), linetype = "dashed",
+               color = "steelblue", alpha = 0.7) +
+    labs(x = "eGFR Discrepancy (mL/min)",
+         y = "HR (95% CI)",
+         title = outcome_label,
+         subtitle = subtitle_str) +
+    coord_cartesian(ylim = c(0, 4)) +
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25"))
+}
+```
+
+## 9.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-anemia2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_anemia_2", "cmp_status_anemia_2",
+                           "pre_HGB_45days", "Anemia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 9.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-anemia3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_anemia_3", "cmp_status_anemia_3",
+                           "pre_HGB_45days", "Anemia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 9.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-throm2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_throm_2", "cmp_status_throm_2",
+                           "pre_PLT_45days", "Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 9.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-throm3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_throm_3", "cmp_status_throm_3",
+                           "pre_PLT_45days", "Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 9.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-aki2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_aki_2", "cmp_status_aki_2",
+                           NULL, "AKI Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 9.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-akikdigo
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
+                           NULL, "AKI (KDIGO) (Carboplatin AUC ≥ 3)")
+```
+
+## 9.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-grade2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
+                           NULL, "Composite Grade 2 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 9.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-grade3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
+                           NULL, "Composite Grade 3 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 9.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-anyhosp
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_any_hosp", "cmp_status_any_hosp",
+                           NULL, "Overall Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 9.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-sideeffect
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_egfrdisc("cmp_time_side_effect", "cmp_status_side_effect",
+                           NULL, "Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 9.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-linsubhr-egfrdisc-death
+#| fig-width: 6
+#| fig-height: 4
+plot_cox_linear_egfrdisc("time_to_death_90", "death_90",
+                         NULL, "90-Day Death (Cox PH) (Carboplatin AUC ≥ 3)")
+```
+
+# 11 Linear subHR Curves — Dose Discrepancy (raw scale) (Carboplatin AUC ≥ 3)
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-helper
+plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
+                              outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("dose_discrepancy", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  adj_df <- d[, c(base_adj, extra_adj), drop = FALSE]
+  X_adj <- model.matrix(~ ., data = adj_df)[, -1, drop = FALSE]
+  X <- cbind(dose_discrepancy = d$dose_discrepancy, X_adj)
+
+  stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
+  time_num <- as.numeric(d[[time_var]])
+
+  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                     cov1 = X, failcode = 1)
+
+  beta   <- fit$coef[1]
+  V_beta <- fit$var[1, 1]
+
+  ref_x  <- median(d$dose_discrepancy, na.rm = TRUE)
+  grid_x <- seq(quantile(d$dose_discrepancy, 0.025, na.rm = TRUE),
+                quantile(d$dose_discrepancy, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x     = grid_x,
+    subhr = exp(log_hr),
+    lcl   = exp(log_hr - 1.96 * se),
+    ucl   = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = subhr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    labs(x = "Dose Discrepancy (mg)",
+         y = "subHR (95% CI)",
+         title = outcome_label) +
+    coord_cartesian(ylim = c(0, 4)) +
+    theme_minimal(base_size = 11)
+}
+
+plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
+                            outcome_label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid")
+  keep <- c("dose_discrepancy", time_var, status_var, base_adj, extra_adj)
+  d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
+
+  fmla <- as.formula(paste0(
+    "Surv(", time_var, ", ", status_var, ") ~ dose_discrepancy + ",
+    paste(c(base_adj, extra_adj), collapse = " + ")
+  ))
+  fit <- survival::coxph(fmla, data = d)
+
+  beta   <- coef(fit)["dose_discrepancy"]
+  V_beta <- vcov(fit)["dose_discrepancy", "dose_discrepancy"]
+
+  ref_x  <- median(d$dose_discrepancy, na.rm = TRUE)
+  grid_x <- seq(quantile(d$dose_discrepancy, 0.025, na.rm = TRUE),
+                quantile(d$dose_discrepancy, 0.975, na.rm = TRUE),
+                length.out = 100)
+
+  log_hr <- beta * (grid_x - ref_x)
+  se     <- sqrt((grid_x - ref_x)^2 * V_beta)
+
+  df_plot <- tibble(
+    x   = grid_x,
+    hr  = exp(log_hr),
+    lcl = exp(log_hr - 1.96 * se),
+    ucl = exp(log_hr + 1.96 * se)
+  )
+
+  ggplot(df_plot, aes(x = x, y = hr)) +
+    geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "darkorange") +
+    geom_line(color = "darkorange", linewidth = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+    geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
+    labs(x = "Dose Discrepancy (mg)",
+         y = "HR (95% CI)",
+         title = outcome_label) +
+    coord_cartesian(ylim = c(0, 4)) +
+    theme_minimal(base_size = 11)
+}
+```
+
+## 10.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-anemia2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_anemia_2", "cmp_status_anemia_2",
+                  "pre_HGB_45days", "Anemia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 10.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-anemia3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_anemia_3", "cmp_status_anemia_3",
+                  "pre_HGB_45days", "Anemia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 10.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-throm2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_throm_2", "cmp_status_throm_2",
+                  "pre_PLT_45days", "Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 10.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-throm3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_throm_3", "cmp_status_throm_3",
+                  "pre_PLT_45days", "Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)")
+```
+
+## 10.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-aki2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_aki_2", "cmp_status_aki_2",
+                  NULL, "AKI Grade 2 (Carboplatin AUC ≥ 3)")
+```
+
+## 10.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-akikdigo
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
+                  NULL, "AKI (KDIGO) (Carboplatin AUC ≥ 3)")
+```
+
+## 10.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-grade2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
+                  NULL, "Composite Grade 2 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 10.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-grade3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
+                  NULL, "Composite Grade 3 AEs (Carboplatin AUC ≥ 3)")
+```
+
+## 10.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-anyhosp
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_any_hosp", "cmp_status_any_hosp",
+                  NULL, "Overall Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 10.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-sideeffect
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear("cmp_time_side_effect", "cmp_status_side_effect",
+                  NULL, "Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)")
+```
+
+## 10.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-linsubhr-dosedisc-death
+#| fig-width: 6
+#| fig-height: 4
+plot_cox_linear("time_to_death_90", "death_90",
+                NULL, "90-Day Death (Cox PH) (Carboplatin AUC ≥ 3)")
+```
+
+# 12 Linear subHR Curves — Hospitalization by Reason (Carboplatin AUC ≥ 3)
+
+## 12.1 Nausea/Vomiting/GI
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp1
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_1", "cmp_status_hosp_1",
+                        NULL, "Nausea/Vomiting/GI (Carboplatin AUC ≥ 3)")
+```
+
+## 12.2 Failure to Thrive/Fatigue/Dehydration
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp2
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_2", "cmp_status_hosp_2",
+                        NULL, "Failure to Thrive/Fatigue/Dehydration (Carboplatin AUC ≥ 3)")
+```
+
+## 12.3 AKI
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp3
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_3", "cmp_status_hosp_3",
+                        NULL, "AKI (Carboplatin AUC ≥ 3)")
+```
+
+## 12.4 Electrolyte Abnormalities
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp4
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_4", "cmp_status_hosp_4",
+                        NULL, "Electrolyte Abnormalities (Carboplatin AUC ≥ 3)")
+```
+
+## 12.5 Cytopenia
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp5
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_5", "cmp_status_hosp_5",
+                        NULL, "Cytopenia (Carboplatin AUC ≥ 3)")
+```
+
+## 12.6 Febrile Neutropenia
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp6
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_6", "cmp_status_hosp_6",
+                        NULL, "Febrile Neutropenia (Carboplatin AUC ≥ 3)")
+```
+
+## 12.7 Infection/Sepsis
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp7
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_7", "cmp_status_hosp_7",
+                        NULL, "Infection/Sepsis (Carboplatin AUC ≥ 3)")
+```
+
+## 12.8 Cancer Progression
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp8
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_8", "cmp_status_hosp_8",
+                        NULL, "Cancer Progression (Carboplatin AUC ≥ 3)")
+```
+
+## 12.9 Immune-related AE & Other
+
+Composite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp-immune-other
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_immune_other",
+                        "cmp_status_hosp_immune_other",
+                        NULL, "Immune-related AE & Other (Carboplatin AUC ≥ 3)")
+```
+
+## 12.10 Planned Surgery/Port
+
+```{r}
+#| label: jx-auc3-linsubhr-ratio-hosp10
+#| fig-width: 6
+#| fig-height: 4
+plot_subhr_linear_ratio("cmp_time_hosp_10", "cmp_status_hosp_10",
+                        NULL, "Planned Surgery/Port (Carboplatin AUC ≥ 3)")
+```
+
+# 13 Scatter Plots — Dose Discrepancy vs eGFR (Carboplatin AUC ≥ 3)
+
+## 13.1 Dose Discrepancy vs CKD-EPI Cr-Cys (unindexed)
+
+```{r}
+#| label: jx-auc3-scatter-epi
+#| fig-width: 6
+#| fig-height: 4
+ggplot(dat %>% filter(!is.na(dose_discrepancy)),
+       aes(x = ckd_epi_gfr_cre_cys_unindex, y = dose_discrepancy)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = TRUE, color = "steelblue") +
+  labs(x = "CKD-EPI Cr-Cys eGFR (unindexed, mL/min)",
+       y = "Dose Discrepancy (mg)",
+       title = "Dose Discrepancy vs CKD-EPI Cr-Cys eGFR (Carboplatin AUC ≥ 3)") +
+  theme_minimal(base_size = 11)
+```
+
+## 13.2 Dose Discrepancy vs Cockcroft-Gault
+
+```{r}
+#| label: jx-auc3-scatter-cg
+#| fig-width: 6
+#| fig-height: 4
+ggplot(dat %>% filter(!is.na(dose_discrepancy)),
+       aes(x = cockcroft, y = dose_discrepancy)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = TRUE, color = "steelblue") +
+  labs(x = "Cockcroft-Gault eGFR (mL/min)",
+       y = "Dose Discrepancy (mg)",
+       title = "Dose Discrepancy vs Cockcroft-Gault eGFR (Carboplatin AUC ≥ 3)") +
+  theme_minimal(base_size = 11)
+```
+
+
+# 14 Adjusted CIF — Dose Discrepancy >= +25 mg (Carboplatin AUC ≥ 3)
+
+Standardized cumulative incidence functions for each competing-risk outcome, contrasting patients with `dose_discrepancy >= 25` (red) against those with `dose_discrepancy < 25` (blue). The Fine-Gray model is fit with the binary exposure plus the same adjuster set used in Section 7. Curves are *adjusted (standardized)* via g-computation: for every patient, predict CIF under exposure = 1 and under exposure = 0, then average the two CIF curves over the cohort. Y-axis is cumulative incidence, x-axis is days from baseline.
+
+90-day death (Section 14.11) is modelled with Cox PH instead of Fine-Gray (no competing event), and the standardized cumulative-incidence-of-death curve is `1 − S(t|Xᵢ)` averaged across the cohort.
+
+```{r}
+#| label: jx-auc3-adjcif-helper
+adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid","cockcroft")
+  vars <- c("dose_discrep_ge25", base_adj, extra_pre)
+  d <- dat %>%
+    dplyr::select(all_of(c(time_var, status_var, vars))) %>%
+    tidyr::drop_na()
+
+  fmla <- as.formula(paste("~",
+            paste(c("dose_discrep_ge25", base_adj, extra_pre), collapse = " + ")))
+  X_full <- model.matrix(fmla, data = d)[, -1, drop = FALSE]
+
+  stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
+  time_num <- as.numeric(d[[time_var]])
+
+  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                     cov1 = X_full, failcode = 1)
+
+  # subHR (95% CI) for the binary exposure, extracted from the same FG fit
+  # dose_discrep_ge25 is the first column of cov1 (entered first in the formula)
+  beta_e <- unname(fit$coef[1])
+  se_e   <- sqrt(fit$var[1, 1])
+  hr     <- exp(beta_e)
+  lcl    <- exp(beta_e - 1.96 * se_e)
+  ucl    <- exp(beta_e + 1.96 * se_e)
+  pval   <- 2 * (1 - pnorm(abs(beta_e / se_e)))
+  p_str  <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+  subtitle_str <- sprintf(
+    "Discrep >= +25 vs <+25: subHR = %.2f (95%% CI %.2f-%.2f), p = %s",
+    hr, lcl, ucl, p_str
+  )
+
+  X0 <- X_full; X0[, "dose_discrep_ge25"] <- 0
+  X1 <- X_full; X1[, "dose_discrep_ge25"] <- 1
+
+  pred0 <- predict(fit, X0)
+  pred1 <- predict(fit, X1)
+
+  times <- pred0[, 1]
+  cif0  <- rowMeans(pred0[, -1, drop = FALSE])
+  cif1  <- rowMeans(pred1[, -1, drop = FALSE])
+
+  df <- bind_rows(
+    tibble(time = times, cif = cif0, group = "Discrep < +25 mg"),
+    tibble(time = times, cif = cif1, group = "Discrep >= +25 mg")
+  )
+
+  ymax <- max(df$cif, na.rm = TRUE)
+
+  ggplot(df, aes(x = time, y = cif, color = group)) +
+    geom_step(linewidth = 1) +
+    scale_color_manual(values = c("Discrep < +25 mg"  = "#1F78B4",
+                                  "Discrep >= +25 mg" = "#E31A1C")) +
+    coord_cartesian(ylim = c(0, max(0.05, ymax * 1.05))) +
+    labs(x = "Days from baseline",
+         y = "Cumulative incidence",
+         color = NULL,
+         title = label,
+         subtitle = subtitle_str) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "top",
+          plot.subtitle = element_text(size = 10, color = "grey25"))
+}
+
+adj_death_curve <- function(time_var = "time_to_death_90",
+                            status_var = "death_90", label) {
+  base_adj <- c("age","sex","score","ecog_score_cat2",
+                "cancer_type_cat_7","tumor_stage","high_dose",
+                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
+                "bmi","smoking","steroids","thyroid","cockcroft")
+  vars <- c("dose_discrep_ge25", base_adj)
+  d <- dat %>%
+    dplyr::select(all_of(c(time_var, status_var, vars))) %>%
+    tidyr::drop_na()
+
+  rhs <- paste(c("dose_discrep_ge25", base_adj), collapse = " + ")
+  fmla <- as.formula(sprintf("survival::Surv(%s, %s) ~ %s",
+                             time_var, status_var, rhs))
+  fit <- survival::coxph(fmla, data = d)
+
+  beta_e <- unname(coef(fit)["dose_discrep_ge25"])
+  se_e   <- sqrt(vcov(fit)["dose_discrep_ge25", "dose_discrep_ge25"])
+  hr     <- exp(beta_e)
+  lcl    <- exp(beta_e - 1.96 * se_e)
+  ucl    <- exp(beta_e + 1.96 * se_e)
+  pval   <- 2 * (1 - pnorm(abs(beta_e / se_e)))
+  p_str  <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+  subtitle_str <- sprintf(
+    "Discrep >= +25 vs <+25: HR = %.2f (95%% CI %.2f-%.2f), p = %s   (Cox PH)",
+    hr, lcl, ucl, p_str
+  )
+
+  d0 <- d; d0$dose_discrep_ge25 <- 0
+  d1 <- d; d1$dose_discrep_ge25 <- 1
+
+  sf0 <- survival::survfit(fit, newdata = d0)
+  sf1 <- survival::survfit(fit, newdata = d1)
+
+  s0 <- if (is.matrix(sf0$surv)) sf0$surv else as.matrix(sf0$surv)
+  s1 <- if (is.matrix(sf1$surv)) sf1$surv else as.matrix(sf1$surv)
+
+  cif0 <- 1 - rowMeans(s0)
+  cif1 <- 1 - rowMeans(s1)
+
+  df <- bind_rows(
+    tibble(time = sf0$time, cif = cif0, group = "Discrep < +25 mg"),
+    tibble(time = sf1$time, cif = cif1, group = "Discrep >= +25 mg")
+  )
+
+  ymax <- max(df$cif, na.rm = TRUE)
+
+  ggplot(df, aes(x = time, y = cif, color = group)) +
+    geom_step(linewidth = 1) +
+    scale_color_manual(values = c("Discrep < +25 mg"  = "#1F78B4",
+                                  "Discrep >= +25 mg" = "#E31A1C")) +
+    coord_cartesian(ylim = c(0, max(0.05, ymax * 1.05))) +
+    labs(x = "Days from baseline",
+         y = "Cumulative incidence (1 - S)",
+         color = NULL,
+         title = label,
+         subtitle = subtitle_str) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "top",
+          plot.subtitle = element_text(size = 10, color = "grey25"))
+}
+```
+
+## 14.1 Anemia Grade 2
+
+```{r}
+#| label: jx-auc3-adjcif-anemia2
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_anemia_2", "cmp_status_anemia_2",
+        "pre_HGB_45days", "Anemia Grade 2")
+```
+
+## 14.2 Anemia Grade 3
+
+```{r}
+#| label: jx-auc3-adjcif-anemia3
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_anemia_3", "cmp_status_anemia_3",
+        "pre_HGB_45days", "Anemia Grade 3")
+```
+
+## 14.3 Thrombocytopenia Grade 2
+
+```{r}
+#| label: jx-auc3-adjcif-throm2
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_throm_2", "cmp_status_throm_2",
+        "pre_PLT_45days", "Thrombocytopenia Grade 2")
+```
+
+## 14.4 Thrombocytopenia Grade 3
+
+```{r}
+#| label: jx-auc3-adjcif-throm3
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_throm_3", "cmp_status_throm_3",
+        "pre_PLT_45days", "Thrombocytopenia Grade 3")
+```
+
+## 14.5 AKI Grade 2
+
+```{r}
+#| label: jx-auc3-adjcif-aki2
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_aki_2", "cmp_status_aki_2",
+        NULL, "AKI Grade 2")
+```
+
+## 14.6 AKI (KDIGO)
+
+```{r}
+#| label: jx-auc3-adjcif-akikdigo
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
+        NULL, "AKI (KDIGO)")
+```
+
+## 14.7 Composite Grade 2 AEs
+
+```{r}
+#| label: jx-auc3-adjcif-grade2
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
+        NULL, "Composite Grade 2 AEs")
+```
+
+## 14.8 Composite Grade 3 AEs
+
+```{r}
+#| label: jx-auc3-adjcif-grade3
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
+        NULL, "Composite Grade 3 AEs")
+```
+
+## 14.9 Overall Hospitalization
+
+```{r}
+#| label: jx-auc3-adjcif-anyhosp
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_any_hosp", "cmp_status_any_hosp",
+        NULL, "Overall Hospitalization")
+```
+
+## 14.10 Platinum-Related Hospitalization
+
+```{r}
+#| label: jx-auc3-adjcif-sideeffect
+#| fig-width: 7
+#| fig-height: 4
+adj_cif("cmp_time_side_effect", "cmp_status_side_effect",
+        NULL, "Platinum-Related Hospitalization")
+```
+
+## 14.11 90-Day Death (Cox PH)
+
+```{r}
+#| label: jx-auc3-adjcif-death
+#| fig-width: 7
+#| fig-height: 4
+adj_death_curve("time_to_death_90", "death_90", "90-Day Death")
+```
+
+# 15 Paper
+
+```{r}
+#| label: jx-auc3-paper-stats
+#| include: false
+n_excess  <- sum(dat$dose_discrep_ge25 == 1, na.rm = TRUE)
+n_with_dx <- sum(!is.na(dat$dose_discrepancy))
+pct_excess <- round(n_excess / n_with_dx * 100, 1)
+```
+
+A total of `r n_excess` (`r pct_excess`%) patients received an excess dose of carboplatin, defined as ≥ 25 mg higher than the dose that would have been predicted using the CKD-EPI eGFR~CR-CYS~ equation adjusted for actual BSA.
+
+(Denominator: `r n_with_dx` carboplatin AUC ≥ 3 patients with a computable predicted dose.)

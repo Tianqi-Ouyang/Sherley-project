@@ -1,0 +1,510 @@
+---
+title: "REDCap Formulas — eGFR & Predicted Dosing"
+author: "Tianqi Ouyang"
+date: "2026-04-07"
+execute:
+  eval: true
+  warning: false
+  message: false
+format:
+  html:
+    theme: lumen
+    toc: true
+    toc-depth: 4
+    code-fold: true
+knitr:
+  opts_knit:
+    root.dir: "/Users/to909/Desktop/Meg/Sherley"
+---
+
+# 1 Overview
+
+This document lists the variable names and formulas used to compute kidney function estimates and predicted platinum dosing. The Excel file (`redcap_formulas.xlsx`) contains patient-level computed values with `record_id` from the full REDCap export (`CystatinCInPatientsO_DATA_2026-04-27_0819.csv`, N=974).
+
+## Missing Data
+
+Some computed variables have missing values due to gaps in the raw REDCap data:
+
+| Input Variable | Missing (N) | Record IDs | Reason |
+|---|---|---|---|
+| `baseline_creatinine` | 1 | 539 | Empty in REDCap |
+| `cys_c_baseline` | 4 | 71, 72, 83, 883 | Empty or text entries ("Missing Cystatin C", "EXCLUDED…") |
+| `age` | 1 | 23 | Empty in REDCap |
+| `platin_group` | 3 | 23, 539, 841 | No platinum type recorded |
+| `platin_dose` | 4 | 23, 539, 773, 841 | No dose recorded |
+
+Missing inputs propagate to the computed variables:
+
+| Computed Variable | Missing (N) | Explanation |
+|---|---|---|
+| `CG_CrCl_ml_min` | 2 | Requires creatinine + age |
+| `CKD_EPI_Cre_2021_ml_min_1.73m2` | 2 | Requires creatinine + age |
+| `CKD_EPI_CysC_2012_ml_min_1.73m2` | 5 | Requires cystatin C + age |
+| `CKD_EPI_CrCysC_2021_BSA_adj_ml_min` | 6 | Requires creatinine + cystatin C + age + height + weight |
+| `Predicted_Carbo_Dose_CrCysC_mg` | 362 | NA for cisplatin patients (N=355) + missing eGFR/dose inputs |
+| `Predicted_Cis_Dose_CrCysC_mg` | 620 | NA for carboplatin patients (N=615) + missing dose/BSA inputs |
+
+# 2 Input Variables (from REDCap / derived)
+
+| Variable | Source | Description |
+|---|---|---|
+| `baseline_creatinine` | REDCap | Baseline serum creatinine (mg/dL) |
+| `cys_c_baseline` | REDCap | Baseline cystatin C (mg/L) |
+| `age` | REDCap | Age at baseline (years) |
+| `sex` | REDCap | 1 = Male, 2 = Female |
+| `weight` | REDCap | Weight (kg) |
+| `height` | REDCap | Height (cm) |
+| `BSA` | Derived | Body surface area (m²) via DuBois formula |
+| `male` | Derived | 0/1 indicator (1 = Male) |
+| `carbo_AUC` | REDCap | Carboplatin target AUC (for carboplatin patients) |
+| `cis_dose` | REDCap | Cisplatin prescribed dose (mg/m²; for cisplatin patients) |
+
+# 3 Intermediate Variables
+
+## 3.1 Body Surface Area (DuBois)
+
+$$
+\text{BSA} = 0.007184 \times \text{weight}^{0.425} \times \text{height}^{0.725}
+$$
+
+## 3.2 Sex indicator
+
+$$
+\text{male} = \begin{cases} 1 & \text{if sex = Male} \\ 0 & \text{if sex = Female} \end{cases}
+$$
+
+# 4 Formulas
+
+## 4.1 Cockcroft-Gault (CG) Creatinine Clearance (mL/min)
+
+**Variable name:** `cockcroft`
+
+$$
+\text{CrCl} = \frac{(140 - \text{age}) \times \text{weight}}{72 \times \text{creatinine}} \times F
+$$
+
+where $F = 0.85$ if female, $F = 1.0$ if male.
+
+**Units:** mL/min (not indexed to BSA)
+
+## 4.2 2021 CKD-EPI Creatinine Equation (not adjusted for BSA)
+
+**Variable name:** `baseline_cre_egfr`
+
+$$
+\text{eGFR} = 142 \times \min\!\left(\frac{\text{Cr}}{k},\; 1\right)^{a} \times \max\!\left(\frac{\text{Cr}}{k},\; 1\right)^{-1.2} \times 0.9938^{\text{age}} \times m
+$$
+
+| Parameter | Male | Female |
+|---|---|---|
+| $k$ | 0.9 | 0.7 |
+| $a$ | −0.302 | −0.241 |
+| $m$ | 1.0 | 1.012 |
+
+**Units:** mL/min/1.73 m²
+
+## 4.3 2012 CKD-EPI Cystatin C Equation (not adjusted for BSA)
+
+**Variable name:** `baseline_cys_c_egfr`
+
+$$
+\text{eGFR} = 133 \times \min\!\left(\frac{\text{CysC}}{0.8},\; 1\right)^{-0.499} \times \max\!\left(\frac{\text{CysC}}{0.8},\; 1\right)^{-1.328} \times 0.996^{\text{age}} \times F
+$$
+
+where $F = 0.932$ if female, $F = 1.0$ if male.
+
+**Units:** mL/min/1.73 m²
+
+**Reference:** Inker et al., *N Engl J Med* 2012.
+
+## 4.4 2021 CKD-EPI Creatinine–Cystatin C Equation adjusted for actual BSA (mL/min)
+
+**Indexed variable name:** `ckd_epi_gfr_cre_cys` (mL/min/1.73 m²)
+**Unindexed variable name:** `ckd_epi_gfr_cre_cys_unindex` (mL/min)
+
+### Step 1 — Indexed eGFR
+
+$$
+\text{eGFR}_{\text{indexed}} = 135 \times \min\!\left(\frac{\text{Cr}}{k},\;1\right)^{a} \times \max\!\left(\frac{\text{Cr}}{k},\;1\right)^{-0.544} \times \min\!\left(\frac{\text{CysC}}{0.8},\;1\right)^{-0.323} \times \max\!\left(\frac{\text{CysC}}{0.8},\;1\right)^{-0.778} \times 0.9961^{\text{age}} \times F
+$$
+
+| Parameter | Male | Female |
+|---|---|---|
+| $k$ | 0.9 | 0.7 |
+| $a$ | −0.144 | −0.219 |
+| $F$ | 1.0 | 0.963 |
+
+### Step 2 — Adjust for actual BSA (un-index)
+
+$$
+\text{eGFR}_{\text{unindexed}} = \text{eGFR}_{\text{indexed}} \times \frac{\text{BSA}}{1.73}
+$$
+
+**Units:** mL/min
+
+## 4.5 Predicted Carboplatin Dose (Calvert Formula)
+
+**Variable name:** `carbo_dose_cre_cys`
+
+$$
+\text{Predicted dose (mg)} = \text{target AUC} \times \left(\min(\text{eGFR}_{\text{Cr-CysC unindexed}},\;125) + 25\right)
+$$
+
+where eGFR is the 2021 CKD-EPI Creatinine–Cystatin C unindexed value from §4.4, capped at 125 mL/min.
+
+**Units:** mg
+
+## 4.6 Predicted Cisplatin Dose
+
+**Variable name:** `cis_predicted_dose_mg`
+
+Cisplatin is dosed per body surface area (mg/m²), not via the Calvert formula. The total predicted dose is:
+
+$$
+\text{Predicted dose (mg)} = \text{cis\_dose (mg/m}^2\text{)} \times \text{BSA (m}^2\text{)}
+$$
+
+Dose adjustments based on renal function are clinically determined:
+
+- Typically administered when eGFR ≥ 60 mL/min
+- Dose reduction or switch to carboplatin when eGFR < 60 mL/min
+
+The CKD-EPI Cr-CysC unindexed eGFR (§4.4) can be used to assess eligibility.
+
+# 5 Summary Table
+
+```{r}
+#| label: summary-table
+library(dplyr)
+library(knitr)
+
+formulas <- tibble::tribble(
+  ~Variable, ~`Full Name`, ~Formula, ~Units,
+  "cockcroft",
+  "Cockcroft-Gault CrCl",
+  "((140 - age) * weight * F) / (72 * Cr); F = 0.85 female, 1.0 male",
+  "mL/min",
+
+  "baseline_cre_egfr",
+  "2021 CKD-EPI Creatinine (not adjusted)",
+  "142 * min(Cr/k, 1)^a * max(Cr/k, 1)^-1.2 * 0.9938^age * m; k=0.9/0.7, a=-0.302/-0.241, m=1/1.012 (M/F)",
+  "mL/min/1.73m²",
+
+  "baseline_cys_c_egfr",
+  "2012 CKD-EPI Cystatin C (not adjusted)",
+  "133 * min(CysC/0.8, 1)^-0.499 * max(CysC/0.8, 1)^-1.328 * 0.996^age * F; F=0.932 female, 1.0 male",
+  "mL/min/1.73m²",
+
+  "ckd_epi_gfr_cre_cys_unindex",
+  "2021 CKD-EPI Cr-CysC adjusted for actual BSA",
+  "135 * [Cr terms] * [CysC terms] * 0.9961^age * F * BSA/1.73",
+  "mL/min",
+
+  "carbo_dose_cre_cys",
+  "Predicted carboplatin dose (Calvert)",
+  "target_AUC * (min(eGFR_CrCysC_unindexed, 125) + 25)",
+  "mg",
+
+  "cis_predicted_dose_mg",
+  "Predicted cisplatin dose",
+  "cis_dose (mg/m²) * BSA (m²)",
+  "mg"
+)
+
+kable(formulas, caption = "eGFR and Predicted Dosing Formulas")
+```
+
+# 6 Generate Excel File (raw data)
+
+```{r}
+#| label: write-excel
+library(openxlsx)
+
+# Load full REDCap export (whole cohort, N=974)
+redcap <- read.csv("Data/CystatinCInPatientsO_DATA_2026-04-27_0819.csv",
+                    stringsAsFactors = FALSE,
+                    fileEncoding = "UTF-8-BOM")
+
+# --- eGFR functions (same as data_management.qmd) ---
+ckd_epi_gfr <- function(cre, male, age) {
+  k <- ifelse(male == 1, 0.9, 0.7)
+  a <- ifelse(male == 1, -0.302, -0.241)
+  m <- ifelse(male == 1, 1, 1.012)
+  142 * min(c(cre/k, 1))^a * max(c(cre/k, 1))^-1.2 * 0.9938^age * m
+}
+
+ckd_epi_cys_gfr <- function(cys, male, age) {
+  133 * min(c(cys/0.8, 1))^(-0.499) * max(c(cys/0.8, 1))^(-1.328) *
+    0.996^age * ifelse(male == 0, 0.932, 1)
+}
+
+ckd_epi_cre_cys_gfr <- function(creatinine, cystatin_c, male, age) {
+  k      <- ifelse(male == 1, 0.9, 0.7)
+  a      <- ifelse(male == 1, -0.144, -0.219)
+  female <- ifelse(male == 0, 0.963, 1)
+  135 *
+    min(c(creatinine/k, 1.0))^a *
+    max(c(creatinine/k, 1.0))^(-0.544) *
+    min(c(cystatin_c/0.8, 1.0))^(-0.323) *
+    max(c(cystatin_c/0.8, 1.0))^(-0.778) *
+    0.9961^age * female
+}
+
+Cockcroft <- function(age, weight, male, cre) {
+  if (male == 0) {
+    (140 - age) * weight * 0.85 / (72 * cre)
+  } else {
+    (140 - age) * weight / (72 * cre)
+  }
+}
+
+unindex <- function(value, bsa) value * bsa / 1.73
+
+# --- Compute all variables ---
+redcap <- redcap %>%
+  mutate(
+    baseline_creatinine = as.numeric(baseline_creatinine),
+    cys_c_baseline      = as.numeric(cys_c_baseline),
+    age                 = as.numeric(age),
+    weight              = as.numeric(weight),
+    height              = as.numeric(height),
+    platin_dose         = as.numeric(platin_dose),
+    male = case_when(
+      sex %in% c(1, "Male", "male")    ~ 1,
+      sex %in% c(2, "Female", "female") ~ 0,
+      TRUE ~ NA_real_
+    ),
+    BSA = 0.007184 * (weight ^ 0.425) * (height ^ 0.725),
+    # platin_group: 1=Carboplatin, 2=Cisplatin
+    carbo_AUC = case_when(platin_group == 1 ~ platin_dose, TRUE ~ NA_real_),
+    cis_dose  = case_when(platin_group == 2 ~ platin_dose, TRUE ~ NA_real_)
+  )
+
+# eGFR calculations (scalar functions → mapply)
+redcap <- redcap %>%
+  mutate(
+    cockcroft           = mapply(Cockcroft, age, weight, male, baseline_creatinine),
+    baseline_cre_egfr   = mapply(ckd_epi_gfr, baseline_creatinine, male, age),
+    baseline_cys_c_egfr = mapply(ckd_epi_cys_gfr, cys_c_baseline, male, age),
+    ckd_epi_gfr_cre_cys = mapply(ckd_epi_cre_cys_gfr,
+                                  baseline_creatinine, cys_c_baseline, male, age),
+    ckd_epi_gfr_cre_cys_unindex = mapply(unindex, ckd_epi_gfr_cre_cys, BSA),
+    ckd_epi_gfr_cre_cys_unindex_cap125 = pmin(ckd_epi_gfr_cre_cys_unindex, 125),
+    # Predicted doses
+    carbo_dose_cre_cys    = carbo_AUC * (ckd_epi_gfr_cre_cys_unindex_cap125 + 25),
+    cis_predicted_dose_mg = cis_dose * BSA
+  )
+
+# Select record_id + input variables + computed variables
+export_df <- redcap %>%
+  mutate(
+    sex_label = case_when(sex == 1 ~ "Male", sex == 2 ~ "Female", TRUE ~ NA_character_),
+    platin_group_label = case_when(
+      platin_group == 1 ~ "Carboplatin",
+      platin_group == 2 ~ "Cisplatin",
+      platin_group == 3 ~ "Unknown",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select(
+    # Input variables
+    record_id,
+    baseline_creatinine,
+    cys_c_baseline,
+    age,
+    sex_label,
+    weight,
+    height,
+    BSA,
+    platin_group_label,
+    platin_dose,
+    carbo_AUC,
+    cis_dose,
+    # Computed variables
+    cockcroft,
+    ckd_epi_gfr_cre_cys_unindex,
+    carbo_dose_cre_cys,
+    cis_predicted_dose_mg,
+    baseline_cre_egfr,
+    baseline_cys_c_egfr
+  ) %>%
+  rename(
+    `sex`                                   = sex_label,
+    `platin_group`                          = platin_group_label,
+    `CG_CrCl_ml_min`                        = cockcroft,
+    `CKD_EPI_CrCysC_2021_BSA_adj_ml_min`    = ckd_epi_gfr_cre_cys_unindex,
+    `Predicted_Carbo_Dose_CrCysC_mg`         = carbo_dose_cre_cys,
+    `Predicted_Cis_Dose_CrCysC_mg`           = cis_predicted_dose_mg,
+    `CKD_EPI_Cre_2021_ml_min_1.73m2`         = baseline_cre_egfr,
+    `CKD_EPI_CysC_2012_ml_min_1.73m2`        = baseline_cys_c_egfr
+  )
+
+# Round numeric columns to 2 decimal places
+export_df <- export_df %>%
+  mutate(across(where(is.numeric) & !matches("record_id"), ~ round(.x, 2)))
+
+# --- Sheet 1: Data ---
+wb <- createWorkbook()
+
+addWorksheet(wb, "Data")
+writeData(wb, "Data", export_df)
+
+# Bold headers
+hs <- createStyle(textDecoration = "bold")
+addStyle(wb, "Data", hs, rows = 1, cols = 1:ncol(export_df))
+setColWidths(wb, "Data", cols = 1:ncol(export_df),
+             widths = c(12, 18, 16, 8, 10, 10, 10, 10, 14, 12, 12, 12,
+                        16, 36, 34, 32, 34, 34))
+
+# --- Sheet 2: Variable dictionary ---
+dict_df <- data.frame(
+  Column_Name = c(
+    "record_id",
+    "baseline_creatinine", "cys_c_baseline", "age", "sex",
+    "weight", "height", "BSA",
+    "platin_group", "platin_dose", "carbo_AUC", "cis_dose",
+    "CG_CrCl_ml_min",
+    "CKD_EPI_CrCysC_2021_BSA_adj_ml_min",
+    "Predicted_Carbo_Dose_CrCysC_mg",
+    "Predicted_Cis_Dose_CrCysC_mg",
+    "CKD_EPI_Cre_2021_ml_min_1.73m2",
+    "CKD_EPI_CysC_2012_ml_min_1.73m2"
+  ),
+  Type = c(
+    "ID",
+    rep("Input", 11),
+    rep("Computed", 6)
+  ),
+  Description = c(
+    "REDCap record identifier",
+    "Baseline serum creatinine (mg/dL)",
+    "Baseline cystatin C (mg/L)",
+    "Age at baseline (years)",
+    "Sex (Male/Female)",
+    "Weight (kg)",
+    "Height (cm)",
+    "Body surface area (m²) via DuBois: 0.007184 * weight^0.425 * height^0.725",
+    "Platinum type (Carboplatin/Cisplatin)",
+    "Prescribed dose: AUC for carboplatin, mg/m² for cisplatin",
+    "Carboplatin target AUC (NA for cisplatin patients)",
+    "Cisplatin prescribed dose in mg/m² (NA for carboplatin patients)",
+    "Cockcroft-Gault creatinine clearance (mL/min)",
+    "2021 CKD-EPI Cr-CysC eGFR adjusted for actual BSA (mL/min)",
+    "Predicted carboplatin dose via Calvert: AUC*(min(eGFR,125)+25); NA for cisplatin",
+    "Predicted cisplatin dose: cis_dose(mg/m²)*BSA(m²); NA for carboplatin",
+    "2021 CKD-EPI Creatinine eGFR, not adjusted (mL/min/1.73m²)",
+    "2012 CKD-EPI Cystatin C eGFR, not adjusted (mL/min/1.73m²)"
+  ),
+  Formula = c(
+    "", "", "", "", "", "", "",
+    "0.007184 * weight^0.425 * height^0.725",
+    "", "", "", "",
+    "((140-age)*weight*F)/(72*Cr); F=0.85(F)/1.0(M)",
+    "135*min(Cr/k,1)^a*max(Cr/k,1)^-0.544*min(CysC/0.8,1)^-0.323*max(CysC/0.8,1)^-0.778*0.9961^age*F*BSA/1.73",
+    "target_AUC*(min(eGFR_CrCysC_unindexed,125)+25)",
+    "cis_dose_mg_per_m2*BSA",
+    "142*min(Cr/k,1)^a*max(Cr/k,1)^-1.2*0.9938^age*m",
+    "133*min(CysC/0.8,1)^-0.499*max(CysC/0.8,1)^-1.328*0.996^age*F"
+  ),
+  stringsAsFactors = FALSE
+)
+
+addWorksheet(wb, "Variable Dictionary")
+writeData(wb, "Variable Dictionary", dict_df)
+addStyle(wb, "Variable Dictionary", hs, rows = 1, cols = 1:ncol(dict_df))
+setColWidths(wb, "Variable Dictionary", cols = 1:4, widths = c(38, 10, 85, 100))
+
+saveWorkbook(wb, "Side requests/redcap_formulas.xlsx", overwrite = TRUE)
+cat("Saved: redcap_formulas.xlsx with", nrow(export_df), "rows\n")
+```
+
+# 7 R Functions (reference copy from data_management.qmd)
+
+These are the exact R implementations used in the project.
+
+```{r}
+#| label: ref-cockcroft
+#| eval: false
+# Cockcroft-Gault creatinine clearance (mL/min)
+Cockcroft <- function(age, weight, male, cre) {
+  if (male == 0) {
+    value <- (140 - age) * weight * 0.85 / (72 * cre)
+  } else {
+    value <- (140 - age) * weight / (72 * cre)
+  }
+  return(value)
+}
+```
+
+```{r}
+#| label: ref-ckd-epi-cre
+#| eval: false
+# 2021 CKD-EPI creatinine-based eGFR (race-free)
+ckd_epi_gfr <- function(cre, male, age) {
+  k <- ifelse(male == 1, 0.9, 0.7)
+  a <- ifelse(male == 1, -0.302, -0.241)
+  m <- ifelse(male == 1, 1, 1.012)
+  gfr <- 142 * min(c(cre/k, 1))^a * max(c(cre/k, 1))^-1.2 * 0.9938^age * m
+  return(gfr)
+}
+```
+
+```{r}
+#| label: ref-ckd-epi-cys
+#| eval: false
+# 2012 CKD-EPI cystatin C-based eGFR (Inker et al. 2012)
+ckd_epi_cys_gfr <- function(cys, male, age) {
+  gfr <- 133 * min(c(cys/0.8, 1))^(-0.499) * max(c(cys/0.8, 1))^(-1.328) *
+         0.996^age * ifelse(male == 0, 0.932, 1)
+  return(gfr)
+}
+```
+
+```{r}
+#| label: ref-ckd-epi-cre-cys
+#| eval: false
+# 2021 CKD-EPI combined creatinine + cystatin C eGFR (race-free)
+ckd_epi_cre_cys_gfr <- function(creatinine, cystatin_c, male, age) {
+  k      <- ifelse(male == 1, 0.9, 0.7)
+  a      <- ifelse(male == 1, -0.144, -0.219)
+  female <- ifelse(male == 0, 0.963, 1)
+  gfr_cr_cys <- 135 *
+    min(c(creatinine/k, 1.0))^a  *
+    max(c(creatinine/k, 1.0))^(-0.544) *
+    min(c(cystatin_c/0.8, 1.0))^(-0.323) *
+    max(c(cystatin_c/0.8, 1.0))^(-0.778) *
+    0.9961^age * female
+  return(gfr_cr_cys)
+}
+```
+
+```{r}
+#| label: ref-unindex
+#| eval: false
+# Adjust indexed eGFR for actual body surface area
+unindex <- function(value, bsa) {
+  return(value * bsa / 1.73)
+}
+```
+
+```{r}
+#| label: ref-calvert
+#| eval: false
+# Predicted carboplatin dose (Calvert formula)
+# GFR capped at 125 mL/min per FDA recommendation
+carbo_predicted_dose <- function(target_auc, egfr_unindexed) {
+  gfr_capped <- min(egfr_unindexed, 125)
+  dose_mg <- target_auc * (gfr_capped + 25)
+  return(dose_mg)
+}
+```
+
+```{r}
+#| label: ref-cisplatin-dose
+#| eval: false
+# Predicted cisplatin total dose
+cisplatin_predicted_dose <- function(dose_mg_per_m2, bsa) {
+  dose_mg <- dose_mg_per_m2 * bsa
+  return(dose_mg)
+}
+```

@@ -1,0 +1,2129 @@
+---
+title: "Analysis"
+author: "Tianqi Ouyang"
+date: "2026-03-31"
+execute:
+  eval: true
+  warning: false
+  message: false
+---
+
+# 1 Setup
+
+```{r}
+#| label: setup-analysis
+library(tidyverse)
+library(scales)
+library(ggplot2)
+library(tidycmprsk)
+library(ggsurvfit)
+library(gtsummary)
+
+# Load final_master from data management output
+final_master <- readRDS("final_master.rds")
+```
+
+# 2 Derived Variables
+
+```{r}
+#| label: derived-vars
+final_master <- final_master %>%
+  mutate(
+    hosp_90 = case_when(
+      hosp_status_90d == 1 ~ 1,
+      hosp_status_90d == 2 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    platinum_related_hosp = ifelse(side_effect == 1, 1, 0),
+    dd_percentile = ntile(dose_discrepancy, 100),
+    dd_decile     = ntile(dose_discrepancy, 10)
+  )
+```
+
+# 3 Table 1: Baseline Characteristics
+
+```{r}
+#| label: table1-baseline
+table_one <- final_master %>%
+  dplyr::select(
+    age, age_cat, sex, race, ethnicity, tumor_stage, cancer_type_cat_7,
+    carbo_AUC, carbo_AUC_cat,
+    ici, Bevacizumab, Paclitaxel, Pemetrexed, Doxorubicin, Etoposide,
+    Gemcitabine, Pertuzumab, Trastuzumab, Docetaxel, Administered_alone,
+    hiv_rpdr, thyroid, smoking, steroids,
+    cci, ecog_score, bmi, bmi_cat,
+    pre_HGB_45days, pre_PLT_45days, pre_ALB_45days,
+    baseline_cys_c, baseline_cre,
+    baseline_cre_egfr, baseline_cys_c_egfr,
+    ckd_epi_gfr_cre_cys, ckd_epi_gfr_cre_cys_unindex,
+    carbo_dose_redcap, carbo_dose_cre_cys, dose_discrepancy, dose_diff_pct
+  ) %>%
+  tbl_summary(
+    statistic = list(age ~ "{mean} ({sd})")
+  )
+table_one
+```
+
+## 3.1 Table 1 by Carboplatin AUC Category
+
+```{r}
+#| label: table1-carbo-auc-cat
+table1_vars <- c(
+  "age", "age_cat", "sex", "race", "ethnicity", "tumor_stage", "cancer_type_cat_7",
+  "carbo_AUC",
+  "ici", "Bevacizumab", "Paclitaxel", "Pemetrexed", "Doxorubicin", "Etoposide",
+  "Gemcitabine", "Pertuzumab", "Trastuzumab", "Docetaxel", "Administered_alone",
+  "hiv_rpdr", "thyroid", "smoking", "steroids",
+  "cci", "ecog_score", "bmi", "bmi_cat",
+  "pre_HGB_45days", "pre_PLT_45days", "pre_ALB_45days",
+  "baseline_cys_c", "baseline_cre",
+  "baseline_cre_egfr", "baseline_cys_c_egfr",
+  "ckd_epi_gfr_cre_cys", "ckd_epi_gfr_cre_cys_unindex",
+  "carbo_dose_redcap", "carbo_dose_cre_cys", "dose_discrepancy", "dose_diff_pct"
+)
+
+final_master %>%
+  dplyr::select(all_of(table1_vars), carbo_AUC_cat) %>%
+  tbl_summary(
+    by = carbo_AUC_cat,
+    statistic = list(age ~ "{mean} ({sd})")
+  ) %>%
+  add_overall() %>%
+  add_p(test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+```
+
+## 3.2 Table 1 by Dose Discrepancy > 25 mg
+
+```{r}
+#| label: table1-dd-gt25
+final_master %>%
+  dplyr::select(all_of(table1_vars), dd_gt25) %>%
+  tbl_summary(
+    by = dd_gt25,
+    statistic = list(age ~ "{mean} ({sd})")
+  ) %>%
+  add_overall() %>%
+  add_p(test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+```
+
+## 3.3 Table 1 by Dose Discrepancy > 50 mg
+
+```{r}
+#| label: table1-dd-gt50
+final_master %>%
+  dplyr::select(all_of(table1_vars), dd_gt50) %>%
+  tbl_summary(
+    by = dd_gt50,
+    statistic = list(age ~ "{mean} ({sd})")
+  ) %>%
+  add_overall() %>%
+  add_p(test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+```
+
+## 3.4 Incidence Outcomes
+
+```{r}
+#| label: table1-incidence
+outcome_vars <- c("Anemia_g2_90days", "Anemia_g3_90days",
+                   "Throm_g2_90days", "Throm_g3_90days",
+                   "AKI_g2_90days", "AKI_g3_90days",
+                   "grade_2_aes", "grade_3_aes",
+                   "hosp_90", "platinum_related_hosp", "death_90")
+
+# Overall
+table_one_incidence <- final_master %>%
+  select(all_of(outcome_vars)) %>%
+  tbl_summary(
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 1
+    )
+  )
+table_one_incidence
+```
+
+## 3.5 Incidence Outcomes by Carboplatin AUC Category
+
+```{r}
+#| label: table1-incidence-carbo-auc
+final_master %>%
+  select(all_of(outcome_vars), carbo_AUC_cat) %>%
+  tbl_summary(
+    by = carbo_AUC_cat,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 1
+    )
+  ) %>%
+  add_overall() %>%
+  add_p(test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+```
+
+# 4 Dose Distribution
+
+## 4.1 Actual vs Predicted Dose (Overlaid)
+
+```{r}
+#| label: plot-dose-overlay
+dose_long <- final_master %>%
+  select(record_id, carbo_dose_redcap, carbo_dose_cre_cys) %>%
+  pivot_longer(
+    cols = c(carbo_dose_redcap, carbo_dose_cre_cys),
+    names_to = "dose_type", values_to = "dose_mg"
+  ) %>%
+  filter(!is.na(dose_mg)) %>%
+  mutate(dose_type = case_match(dose_type,
+    "carbo_dose_redcap"  ~ "Actual (REDCap)",
+    "carbo_dose_cre_cys" ~ "Predicted (CKD-EPI Cr-Cys)"
+  ))
+
+ggplot(dose_long, aes(x = dose_mg, fill = dose_type)) +
+  geom_histogram(alpha = 0.5, bins = 40, position = "identity", color = "black") +
+  scale_fill_manual(values = c("Actual (REDCap)" = "#E31A1C",
+                                "Predicted (CKD-EPI Cr-Cys)" = "#1F78B4")) +
+  labs(title = "Carboplatin Dose Distribution",
+       x = "Dose (mg)", y = "Number of Patients", fill = "Dose Type") +
+  theme_minimal(base_size = 14)
+```
+
+## 4.2 Actual vs Predicted Dose (Side by Side)
+
+```{r}
+#| label: plot-dose-facet
+ggplot(dose_long, aes(x = dose_mg, fill = dose_type)) +
+  geom_histogram(color = "black", alpha = 0.7, bins = 40) +
+  facet_wrap(~ dose_type) +
+  geom_vline(
+    data = dose_long %>% group_by(dose_type) %>%
+      summarise(grp_mean = mean(dose_mg, na.rm = TRUE)),
+    aes(xintercept = grp_mean), color = "red", linetype = "dashed", linewidth = 0.8
+  ) +
+  scale_fill_manual(values = c("Actual (REDCap)" = "#E31A1C",
+                                "Predicted (CKD-EPI Cr-Cys)" = "#1F78B4")) +
+  labs(title = "Carboplatin Dose Distribution",
+       x = "Dose (mg)", y = "Number of Patients") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: decile-rates
+final_master <- final_master %>%
+  group_by(dd_decile) %>%
+  mutate(
+    anemia_2_rate_decile              = mean(Anemia_g2_90days, na.rm = TRUE),
+    anemia_3_rate_decile              = mean(Anemia_g3_90days, na.rm = TRUE),
+    throm_2_rate_decile               = mean(Throm_g2_90days, na.rm = TRUE),
+    throm_3_rate_decile               = mean(Throm_g3_90days, na.rm = TRUE),
+    aki_2_rate_decile                 = mean(AKI_g2_90days, na.rm = TRUE),
+    aki_3_rate_decile                 = mean(AKI_g3_90days, na.rm = TRUE),
+    hos_rate_decile                   = mean(hosp_90, na.rm = TRUE),
+    platinum_related_hos_rate_decile  = mean(platinum_related_hosp, na.rm = TRUE),
+    death_rate_decile                 = mean(death_90, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(dd_decile = as.numeric(dd_decile))
+```
+
+# 5 LOESS Plots: AE Rates by Dose Discrepancy Percentile
+
+```{r}
+#| label: compute-vline-medians
+# Median dose discrepancy at 60th and 70th percentile (for vertical line labels)
+median_dd_p60 <- median(
+  final_master$dose_discrepancy[final_master$dd_percentile == 60], na.rm = TRUE)
+median_dd_p70 <- median(
+  final_master$dose_discrepancy[final_master$dd_percentile == 70], na.rm = TRUE)
+```
+
+```{r}
+#| label: fn-loess-plot
+loess_plot <- function(data, x, y, x_point, y_point, title, xlab, ylab,
+                       vlines = NULL) {
+  p <- ggplot(data, aes(x = {{x}}, y = {{y}})) +
+    geom_point(aes(x = {{x_point}}, y = {{y_point}}),
+               size = 4, color = "black", shape = 19) +
+    geom_smooth(method = "loess", se = TRUE, span = 0.75, color = "blue", linewidth = 1.5) +
+    scale_y_continuous(labels = percent_format(accuracy = 1)) +
+    labs(title = title, x = xlab, y = ylab) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.title.x  = element_text(size = 11),
+      axis.title.y  = element_text(size = 11),
+      axis.text.x   = element_text(size = 10),
+      axis.text.y   = element_text(size = 10),
+      plot.title     = element_text(size = 13, face = "bold")
+    )
+  if (!is.null(vlines)) {
+    p <- p +
+      geom_vline(data = vlines, aes(xintercept = x),
+                 linetype = "dashed", color = "red", linewidth = 0.7) +
+      geom_text(data = vlines, aes(x = x, y = Inf, label = label),
+                vjust = 1.5, hjust = -0.1, size = 3.2, color = "red")
+  }
+  p
+}
+
+loess_plot_raw <- function(data, x, y, title, xlab, ylab, vlines = NULL) {
+  p <- ggplot(data, aes(x = {{x}}, y = {{y}})) +
+    geom_smooth(method = "loess", se = TRUE, span = 0.75, color = "blue", linewidth = 1.5) +
+    scale_y_continuous(labels = percent_format(accuracy = 1)) +
+    labs(title = title, x = xlab, y = ylab) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.title.x  = element_text(size = 11),
+      axis.title.y  = element_text(size = 11),
+      axis.text.x   = element_text(size = 10),
+      axis.text.y   = element_text(size = 10),
+      plot.title     = element_text(size = 13, face = "bold")
+    )
+  if (!is.null(vlines)) {
+    p <- p +
+      geom_vline(data = vlines, aes(xintercept = x),
+                 linetype = "dashed", color = "red", linewidth = 0.7) +
+      geom_text(data = vlines, aes(x = x, y = Inf, label = label),
+                vjust = 1.5, hjust = -0.1, size = 3.2, color = "red")
+  }
+  p
+}
+```
+
+```{r}
+#| label: vline-data
+# Vertical reference lines for percentile LOESS plots
+pct_vlines <- data.frame(
+  x     = c(60, 70),
+  label = c(paste0("median: ", round(median_dd_p60, 0), ""),
+            paste0("median: ", round(median_dd_p70, 0), ""))
+)
+```
+
+## 5.1 Grade 2 Anemia
+
+```{r}
+#| label: plot-anemia-2
+loess_plot(
+  data = final_master, x = dd_percentile, y = Anemia_g2_90days,
+  x_point = dd_decile * 10, y_point = anemia_2_rate_decile,
+  title = "Grade >= 2 Anemia",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Anemia",
+  vlines = pct_vlines
+)
+```
+
+## 5.2 Grade 3 Anemia
+
+```{r}
+#| label: plot-anemia-3
+loess_plot(
+  data = final_master, x = dd_percentile, y = Anemia_g3_90days,
+  x_point = dd_decile * 10, y_point = anemia_3_rate_decile,
+  title = "Grade >= 3 Anemia",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Anemia",
+  vlines = pct_vlines
+)
+```
+
+## 5.3 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: plot-throm-2
+loess_plot(
+  data = final_master, x = dd_percentile, y = Throm_g2_90days,
+  x_point = dd_decile * 10, y_point = throm_2_rate_decile,
+  title = "Grade >= 2 Thrombocytopenia",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = pct_vlines
+)
+```
+
+## 5.4 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: plot-throm-3
+loess_plot(
+  data = final_master, x = dd_percentile, y = Throm_g3_90days,
+  x_point = dd_decile * 10, y_point = throm_3_rate_decile,
+  title = "Grade >= 3 Thrombocytopenia",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = pct_vlines
+)
+```
+
+## 5.5 Grade 2 AKI
+
+```{r}
+#| label: plot-aki-2
+loess_plot(
+  data = final_master, x = dd_percentile, y = AKI_g2_90days,
+  x_point = dd_decile * 10, y_point = aki_2_rate_decile,
+  title = "Grade >= 2 Creatinine Increased",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = pct_vlines
+)
+```
+
+## 5.6 Grade 3 AKI
+
+```{r}
+#| label: plot-aki-3
+loess_plot(
+  data = final_master, x = dd_percentile, y = AKI_g3_90days,
+  x_point = dd_decile * 10, y_point = aki_3_rate_decile,
+  title = "Grade >= 3 Creatinine Increased",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = pct_vlines
+)
+```
+
+## 5.7 Overall Hospitalization
+
+```{r}
+#| label: plot-hosp
+loess_plot(
+  data = final_master, x = dd_percentile, y = hosp_90,
+  x_point = dd_decile * 10, y_point = hos_rate_decile,
+  title = "Overall Hospitalization",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Overall Hospitalization",
+  vlines = pct_vlines
+)
+```
+
+## 5.8 Platinum-Related Hospitalization
+
+```{r}
+#| label: plot-platinum-hosp
+loess_plot(
+  data = final_master, x = dd_percentile, y = platinum_related_hosp,
+  x_point = dd_decile * 10, y_point = platinum_related_hos_rate_decile,
+  title = "Hospitalization for Platinum-Associated AEs",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = pct_vlines
+)
+```
+
+## 5.9 90-Day Death
+
+```{r}
+#| label: plot-death-pct
+loess_plot(
+  data = final_master, x = dd_percentile, y = death_90,
+  x_point = dd_decile * 10, y_point = death_rate_decile,
+  title = "90-Day Mortality",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "90-Day Mortality",
+  vlines = pct_vlines
+)
+```
+
+# 6 LOESS Plots: AE Rates by Actual Dose Discrepancy (mg)
+
+```{r}
+#| label: raw-vline-data
+raw_vlines <- data.frame(
+  x     = c(25, 50, 75),
+  label = c("25 mg", "50 mg", "75 mg")
+)
+```
+
+## 6.1 Grade 2 Anemia
+
+```{r}
+#| label: plot-anemia-2-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = Anemia_g2_90days,
+  title = "Grade >= 2 Anemia",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 6.2 Grade 3 Anemia
+
+```{r}
+#| label: plot-anemia-3-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = Anemia_g3_90days,
+  title = "Grade >= 3 Anemia",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 6.3 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: plot-throm-2-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = Throm_g2_90days,
+  title = "Grade >= 2 Thrombocytopenia",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 6.4 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: plot-throm-3-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = Throm_g3_90days,
+  title = "Grade >= 3 Thrombocytopenia",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 6.5 Grade 2 AKI
+
+```{r}
+#| label: plot-aki-2-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = AKI_g2_90days,
+  title = "Grade >= 2 Creatinine Increased",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 6.6 Grade 3 AKI
+
+```{r}
+#| label: plot-aki-3-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = AKI_g3_90days,
+  title = "Grade >= 3 Creatinine Increased",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 6.7 Overall Hospitalization
+
+```{r}
+#| label: plot-hosp-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = hosp_90,
+  title = "Overall Hospitalization",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Overall Hospitalization",
+  vlines = raw_vlines
+)
+```
+
+## 6.8 Platinum-Related Hospitalization
+
+```{r}
+#| label: plot-platinum-hosp-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = platinum_related_hosp,
+  title = "Hospitalization for Platinum-Associated AEs",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = raw_vlines
+)
+```
+
+## 6.9 90-Day Death
+
+```{r}
+#| label: plot-death-raw
+loess_plot_raw(
+  data = final_master, x = dose_discrepancy, y = death_90,
+  title = "90-Day Mortality",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "90-Day Mortality",
+  vlines = raw_vlines
+)
+```
+
+# 7 Dose Discrepancy: Outlier Inspection
+
+```{r}
+#| label: plot-dose-diff-boxplot
+# IQR-based outlier detection
+dd_stats <- boxplot.stats(final_master$dose_discrepancy[!is.na(final_master$dose_discrepancy)])
+
+cat("Dose Discrepancy Summary:\n")
+cat("  Median:", median(final_master$dose_discrepancy, na.rm = TRUE), "mg\n")
+cat("  IQR:   ", IQR(final_master$dose_discrepancy, na.rm = TRUE), "mg\n")
+cat("  Lower fence:", dd_stats$stats[1], "mg\n")
+cat("  Upper fence:", dd_stats$stats[5], "mg\n")
+cat("  N outliers: ", length(dd_stats$out), "\n")
+
+# Flag outlier patients
+outlier_ids <- final_master %>%
+  filter(dose_discrepancy %in% dd_stats$out) %>%
+  select(record_id, EMPI, carbo_AUC, carbo_dose_redcap, carbo_dose_cre_cys,
+         dose_discrepancy, dose_diff_pct,
+         ckd_epi_gfr_cre_cys_unindex, ckd_epi_gfr_cre_cys_unindex_cap125)
+
+cat("\nOutlier record_ids:\n")
+print(outlier_ids %>% select(record_id, dose_discrepancy, dose_diff_pct, carbo_AUC,
+                              carbo_dose_redcap, carbo_dose_cre_cys),
+      n = Inf)
+```
+
+```{r}
+#| label: plot-boxplot-dd
+ggplot(final_master, aes(y = dose_discrepancy)) +
+  geom_boxplot(fill = "#1F78B4", alpha = 0.5, outlier.color = "red", outlier.size = 2) +
+  labs(title = "Dose Discrepancy: Boxplot with Outliers",
+       y = "Dose Discrepancy (mg): Actual - Predicted",
+       subtitle = "Red points = IQR outliers") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+# 8 Cumulative Incidence Plots
+
+## 8.1 Platinum-Related Hospitalization by dd_gt25
+
+```{r}
+#| label: cuminc-side-effect-dd25
+fit_side_effect_dd25 <- cuminc(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt25,
+  data = final_master
+)
+
+ggcuminc(fit_side_effect_dd25) +
+  labs(
+    title = "Platinum-Related Hospitalization by Dose Discrepancy > 25 mg",
+    x = "Follow-up Time (Days)",
+    y = "Cumulative Incidence"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 16),
+    axis.title    = element_text(size = 14),
+    axis.text     = element_text(size = 12),
+    legend.title  = element_blank(),
+    legend.text   = element_text(size = 12)
+  ) +
+  scale_color_manual(values = c("red", "blue"))
+```
+
+## 8.2 Platinum-Related Hospitalization by dd_gt50
+
+```{r}
+#| label: cuminc-side-effect-dd50
+fit_side_effect_dd50 <- cuminc(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt50,
+  data = final_master
+)
+
+ggcuminc(fit_side_effect_dd50) +
+  labs(
+    title = "Platinum-Related Hospitalization by Dose Discrepancy > 50 mg",
+    x = "Follow-up Time (Days)",
+    y = "Cumulative Incidence"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 16),
+    axis.title    = element_text(size = 14),
+    axis.text     = element_text(size = 12),
+    legend.title  = element_blank(),
+    legend.text   = element_text(size = 12)
+  ) +
+  scale_color_manual(values = c("red", "blue"))
+```
+
+## 8.3 Kaplan-Meier: 90-Day Death by dd_gt25
+
+```{r}
+#| label: km-death-dd25
+km_death_dd25 <- survfit(
+  Surv(time_to_death_90, death_90) ~ dd_gt25,
+  data = final_master
+)
+
+ggsurvfit(km_death_dd25) +
+  labs(
+    title = "90-Day Mortality by Dose Discrepancy > 25 mg",
+    x = "Follow-up Time (Days)",
+    y = "Survival Probability"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 16),
+    axis.title    = element_text(size = 14),
+    axis.text     = element_text(size = 12),
+    legend.title  = element_blank(),
+    legend.text   = element_text(size = 12)
+  ) +
+  scale_color_manual(values = c("red", "blue"))
+```
+
+## 8.4 Kaplan-Meier: 90-Day Death by dd_gt50
+
+```{r}
+#| label: km-death-dd50
+km_death_dd50 <- survfit(
+  Surv(time_to_death_90, death_90) ~ dd_gt50,
+  data = final_master
+)
+
+ggsurvfit(km_death_dd50) +
+  labs(
+    title = "90-Day Mortality by Dose Discrepancy > 50 mg",
+    x = "Follow-up Time (Days)",
+    y = "Survival Probability"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 16),
+    axis.title    = element_text(size = 14),
+    axis.text     = element_text(size = 12),
+    legend.title  = element_blank(),
+    legend.text   = element_text(size = 12)
+  ) +
+  scale_color_manual(values = c("red", "blue"))
+```
+
+# 9 LOESS Plots: Carboplatin AUC < 4 Cohort
+
+```{r}
+#| label: carbo-lt4-subset
+# Subset to carboplatin patients with AUC < 4
+fm_lt4 <- final_master %>%
+  filter(carbo_AUC_cat == "<4")
+
+# Recompute percentile and decile within this subset
+fm_lt4 <- fm_lt4 %>%
+  mutate(
+    dd_percentile_lt4 = ntile(dose_discrepancy, 100),
+    dd_decile_lt4     = ntile(dose_discrepancy, 10)
+  ) %>%
+  group_by(dd_decile_lt4) %>%
+  mutate(
+    anemia_2_rate_decile_lt4             = mean(Anemia_g2_90days, na.rm = TRUE),
+    anemia_3_rate_decile_lt4             = mean(Anemia_g3_90days, na.rm = TRUE),
+    throm_2_rate_decile_lt4              = mean(Throm_g2_90days, na.rm = TRUE),
+    throm_3_rate_decile_lt4              = mean(Throm_g3_90days, na.rm = TRUE),
+    aki_2_rate_decile_lt4                = mean(AKI_g2_90days, na.rm = TRUE),
+    aki_3_rate_decile_lt4                = mean(AKI_g3_90days, na.rm = TRUE),
+    hos_rate_decile_lt4                  = mean(hosp_90, na.rm = TRUE),
+    platinum_related_hos_rate_decile_lt4 = mean(platinum_related_hosp, na.rm = TRUE),
+    death_rate_decile_lt4                = mean(death_90, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(dd_decile_lt4 = as.numeric(dd_decile_lt4))
+```
+
+```{r}
+#| label: carbo-lt4-vlines
+# Median dose discrepancy at P60 and P70 within the AUC < 4 subset
+median_dd_p60_lt4 <- median(
+  fm_lt4$dose_discrepancy[fm_lt4$dd_percentile_lt4 == 60], na.rm = TRUE)
+median_dd_p70_lt4 <- median(
+  fm_lt4$dose_discrepancy[fm_lt4$dd_percentile_lt4 == 70], na.rm = TRUE)
+
+pct_vlines_lt4 <- data.frame(
+  x     = c(60, 70),
+  label = c(paste0("median: ", round(median_dd_p60_lt4, 0), ""),
+            paste0("median: ", round(median_dd_p70_lt4, 0), ""))
+)
+```
+
+## 9.1 Grade 2 Anemia (AUC < 4)
+
+```{r}
+#| label: plot-anemia-2-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = Anemia_g2_90days,
+  x_point = dd_decile_lt4 * 10, y_point = anemia_2_rate_decile_lt4,
+  title = "Grade >= 2 Anemia (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Anemia",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.2 Grade 3 Anemia (AUC < 4)
+
+```{r}
+#| label: plot-anemia-3-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = Anemia_g3_90days,
+  x_point = dd_decile_lt4 * 10, y_point = anemia_3_rate_decile_lt4,
+  title = "Grade >= 3 Anemia (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Anemia",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.3 Grade 2 Thrombocytopenia (AUC < 4)
+
+```{r}
+#| label: plot-throm-2-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = Throm_g2_90days,
+  x_point = dd_decile_lt4 * 10, y_point = throm_2_rate_decile_lt4,
+  title = "Grade >= 2 Thrombocytopenia (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.4 Grade 3 Thrombocytopenia (AUC < 4)
+
+```{r}
+#| label: plot-throm-3-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = Throm_g3_90days,
+  x_point = dd_decile_lt4 * 10, y_point = throm_3_rate_decile_lt4,
+  title = "Grade >= 3 Thrombocytopenia (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.5 Grade 2 AKI (AUC < 4)
+
+```{r}
+#| label: plot-aki-2-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = AKI_g2_90days,
+  x_point = dd_decile_lt4 * 10, y_point = aki_2_rate_decile_lt4,
+  title = "Grade >= 2 Creatinine Increased (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.6 Grade 3 AKI (AUC < 4)
+
+```{r}
+#| label: plot-aki-3-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = AKI_g3_90days,
+  x_point = dd_decile_lt4 * 10, y_point = aki_3_rate_decile_lt4,
+  title = "Grade >= 3 Creatinine Increased (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.7 Overall Hospitalization (AUC < 4)
+
+```{r}
+#| label: plot-hosp-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = hosp_90,
+  x_point = dd_decile_lt4 * 10, y_point = hos_rate_decile_lt4,
+  title = "Overall Hospitalization (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Overall Hospitalization",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.8 Platinum-Related Hospitalization (AUC < 4)
+
+```{r}
+#| label: plot-platinum-hosp-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = platinum_related_hosp,
+  x_point = dd_decile_lt4 * 10, y_point = platinum_related_hos_rate_decile_lt4,
+  title = "Hospitalization for Platinum-Associated AEs (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = pct_vlines_lt4
+)
+```
+
+## 9.9 90-Day Death (AUC < 4)
+
+```{r}
+#| label: plot-death-lt4
+loess_plot(
+  data = fm_lt4, x = dd_percentile_lt4, y = death_90,
+  x_point = dd_decile_lt4 * 10, y_point = death_rate_decile_lt4,
+  title = "90-Day Mortality (Carboplatin AUC < 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "90-Day Mortality",
+  vlines = pct_vlines_lt4
+)
+```
+
+# 10 LOESS Plots: AE Rates by Actual Dose Discrepancy — AUC < 4 Cohort
+
+## 10.1 Grade 2 Anemia (AUC < 4)
+
+```{r}
+#| label: plot-anemia-2-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = Anemia_g2_90days,
+  title = "Grade >= 2 Anemia (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 10.2 Grade 3 Anemia (AUC < 4)
+
+```{r}
+#| label: plot-anemia-3-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = Anemia_g3_90days,
+  title = "Grade >= 3 Anemia (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 10.3 Grade 2 Thrombocytopenia (AUC < 4)
+
+```{r}
+#| label: plot-throm-2-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = Throm_g2_90days,
+  title = "Grade >= 2 Thrombocytopenia (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 10.4 Grade 3 Thrombocytopenia (AUC < 4)
+
+```{r}
+#| label: plot-throm-3-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = Throm_g3_90days,
+  title = "Grade >= 3 Thrombocytopenia (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 10.5 Grade 2 AKI (AUC < 4)
+
+```{r}
+#| label: plot-aki-2-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = AKI_g2_90days,
+  title = "Grade >= 2 Creatinine Increased (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 10.6 Grade 3 AKI (AUC < 4)
+
+```{r}
+#| label: plot-aki-3-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = AKI_g3_90days,
+  title = "Grade >= 3 Creatinine Increased (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 10.7 Overall Hospitalization (AUC < 4)
+
+```{r}
+#| label: plot-hosp-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = hosp_90,
+  title = "Overall Hospitalization (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Overall Hospitalization",
+  vlines = raw_vlines
+)
+```
+
+## 10.8 Platinum-Related Hospitalization (AUC < 4)
+
+```{r}
+#| label: plot-platinum-hosp-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = platinum_related_hosp,
+  title = "Hospitalization for Platinum-Associated AEs (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = raw_vlines
+)
+```
+
+## 10.9 90-Day Death (AUC < 4)
+
+```{r}
+#| label: plot-death-raw-lt4
+loess_plot_raw(
+  data = fm_lt4, x = dose_discrepancy, y = death_90,
+  title = "90-Day Mortality (Carboplatin AUC < 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "90-Day Mortality",
+  vlines = raw_vlines
+)
+```
+
+# 11 Fine-Gray Competing Risk Regression Models
+
+Adjusted for covariates from the reference analysis (excluding `egfr_cock`):
+`age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score`.
+Anemia models add `pre_HGB_45days`; thrombocytopenia models add `pre_PLT_45days`;
+composite grade 2/3 AE models add both.
+
+## 11.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.2 Grade 2 Anemia
+
+```{r}
+#| label: fg-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.3 Grade 3 Anemia
+
+```{r}
+#| label: fg-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.6 Grade 2 AKI
+
+```{r}
+#| label: fg-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.7 Grade 3 AKI
+
+```{r}
+#| label: fg-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 11.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 12 Fine-Gray Models: Dose Discrepancy > 50 mg
+
+Same models as Section 11, using `dd_gt50` as the exposure.
+
+## 12.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg50-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.2 Grade 2 Anemia
+
+```{r}
+#| label: fg50-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.3 Grade 3 Anemia
+
+```{r}
+#| label: fg50-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg50-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg50-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.6 Grade 2 AKI
+
+```{r}
+#| label: fg50-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.7 Grade 3 AKI
+
+```{r}
+#| label: fg50-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg50-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 12.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg50-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 13 Cox Proportional Hazards Models: 90-Day Death
+
+Death is the terminal event (no competing risk), so we use standard Cox PH regression
+with the same covariate adjustment as the Fine-Gray models above.
+
+## 13.1 Cox for Death — dd_gt25
+
+```{r}
+#| label: cox-death-dd25
+library(survival)
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 13.2 Cox for Death — dd_gt50
+
+```{r}
+#| label: cox-death-dd50
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 14 LOESS Plots: Carboplatin AUC >= 4 Cohort (Percentile)
+
+```{r}
+#| label: carbo-ge4-subset
+# Subset to carboplatin patients with AUC >= 4
+fm_ge4 <- final_master %>%
+  filter(carbo_AUC_cat != "<4")
+
+# Recompute percentile and decile within this subset
+fm_ge4 <- fm_ge4 %>%
+  mutate(
+    dd_percentile_ge4 = ntile(dose_discrepancy, 100),
+    dd_decile_ge4     = ntile(dose_discrepancy, 10)
+  ) %>%
+  group_by(dd_decile_ge4) %>%
+  mutate(
+    anemia_2_rate_decile_ge4             = mean(Anemia_g2_90days, na.rm = TRUE),
+    anemia_3_rate_decile_ge4             = mean(Anemia_g3_90days, na.rm = TRUE),
+    throm_2_rate_decile_ge4              = mean(Throm_g2_90days, na.rm = TRUE),
+    throm_3_rate_decile_ge4              = mean(Throm_g3_90days, na.rm = TRUE),
+    aki_2_rate_decile_ge4                = mean(AKI_g2_90days, na.rm = TRUE),
+    aki_3_rate_decile_ge4                = mean(AKI_g3_90days, na.rm = TRUE),
+    hos_rate_decile_ge4                  = mean(hosp_90, na.rm = TRUE),
+    platinum_related_hos_rate_decile_ge4 = mean(platinum_related_hosp, na.rm = TRUE),
+    death_rate_decile_ge4                = mean(death_90, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(dd_decile_ge4 = as.numeric(dd_decile_ge4))
+```
+
+```{r}
+#| label: carbo-ge4-vlines
+# Median dose discrepancy at P60 and P70 within the AUC >= 4 subset
+median_dd_p60_ge4 <- median(
+  fm_ge4$dose_discrepancy[fm_ge4$dd_percentile_ge4 == 60], na.rm = TRUE)
+median_dd_p70_ge4 <- median(
+  fm_ge4$dose_discrepancy[fm_ge4$dd_percentile_ge4 == 70], na.rm = TRUE)
+
+pct_vlines_ge4 <- data.frame(
+  x     = c(60, 70),
+  label = c(paste0("median: ", round(median_dd_p60_ge4, 0), ""),
+            paste0("median: ", round(median_dd_p70_ge4, 0), ""))
+)
+```
+
+## 14.1 Grade 2 Anemia (AUC >= 4)
+
+```{r}
+#| label: plot-anemia-2-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = Anemia_g2_90days,
+  x_point = dd_decile_ge4 * 10, y_point = anemia_2_rate_decile_ge4,
+  title = "Grade >= 2 Anemia (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Anemia",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.2 Grade 3 Anemia (AUC >= 4)
+
+```{r}
+#| label: plot-anemia-3-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = Anemia_g3_90days,
+  x_point = dd_decile_ge4 * 10, y_point = anemia_3_rate_decile_ge4,
+  title = "Grade >= 3 Anemia (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Anemia",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.3 Grade 2 Thrombocytopenia (AUC >= 4)
+
+```{r}
+#| label: plot-throm-2-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = Throm_g2_90days,
+  x_point = dd_decile_ge4 * 10, y_point = throm_2_rate_decile_ge4,
+  title = "Grade >= 2 Thrombocytopenia (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.4 Grade 3 Thrombocytopenia (AUC >= 4)
+
+```{r}
+#| label: plot-throm-3-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = Throm_g3_90days,
+  x_point = dd_decile_ge4 * 10, y_point = throm_3_rate_decile_ge4,
+  title = "Grade >= 3 Thrombocytopenia (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.5 Grade 2 AKI (AUC >= 4)
+
+```{r}
+#| label: plot-aki-2-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = AKI_g2_90days,
+  x_point = dd_decile_ge4 * 10, y_point = aki_2_rate_decile_ge4,
+  title = "Grade >= 2 Creatinine Increased (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.6 Grade 3 AKI (AUC >= 4)
+
+```{r}
+#| label: plot-aki-3-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = AKI_g3_90days,
+  x_point = dd_decile_ge4 * 10, y_point = aki_3_rate_decile_ge4,
+  title = "Grade >= 3 Creatinine Increased (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.7 Overall Hospitalization (AUC >= 4)
+
+```{r}
+#| label: plot-hosp-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = hosp_90,
+  x_point = dd_decile_ge4 * 10, y_point = hos_rate_decile_ge4,
+  title = "Overall Hospitalization (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Overall Hospitalization",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.8 Platinum-Related Hospitalization (AUC >= 4)
+
+```{r}
+#| label: plot-platinum-hosp-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = platinum_related_hosp,
+  x_point = dd_decile_ge4 * 10, y_point = platinum_related_hos_rate_decile_ge4,
+  title = "Hospitalization for Platinum-Associated AEs (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = pct_vlines_ge4
+)
+```
+
+## 14.9 90-Day Death (AUC >= 4)
+
+```{r}
+#| label: plot-death-ge4
+loess_plot(
+  data = fm_ge4, x = dd_percentile_ge4, y = death_90,
+  x_point = dd_decile_ge4 * 10, y_point = death_rate_decile_ge4,
+  title = "90-Day Mortality (Carboplatin AUC >= 4)",
+  xlab = "Percentile of Dose Discrepancy (REDCap - CKD-EPI Cr-Cys)",
+  ylab = "90-Day Mortality",
+  vlines = pct_vlines_ge4
+)
+```
+
+# 15 LOESS Plots: AE Rates by Actual Dose Discrepancy — AUC >= 4 Cohort
+
+## 15.1 Grade 2 Anemia (AUC >= 4)
+
+```{r}
+#| label: plot-anemia-2-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = Anemia_g2_90days,
+  title = "Grade >= 2 Anemia (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 15.2 Grade 3 Anemia (AUC >= 4)
+
+```{r}
+#| label: plot-anemia-3-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = Anemia_g3_90days,
+  title = "Grade >= 3 Anemia (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Anemia",
+  vlines = raw_vlines
+)
+```
+
+## 15.3 Grade 2 Thrombocytopenia (AUC >= 4)
+
+```{r}
+#| label: plot-throm-2-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = Throm_g2_90days,
+  title = "Grade >= 2 Thrombocytopenia (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 15.4 Grade 3 Thrombocytopenia (AUC >= 4)
+
+```{r}
+#| label: plot-throm-3-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = Throm_g3_90days,
+  title = "Grade >= 3 Thrombocytopenia (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Thrombocytopenia",
+  vlines = raw_vlines
+)
+```
+
+## 15.5 Grade 2 AKI (AUC >= 4)
+
+```{r}
+#| label: plot-aki-2-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = AKI_g2_90days,
+  title = "Grade >= 2 Creatinine Increased (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 2 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 15.6 Grade 3 AKI (AUC >= 4)
+
+```{r}
+#| label: plot-aki-3-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = AKI_g3_90days,
+  title = "Grade >= 3 Creatinine Increased (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Grade >= 3 Creatinine Increased",
+  vlines = raw_vlines
+)
+```
+
+## 15.7 Overall Hospitalization (AUC >= 4)
+
+```{r}
+#| label: plot-hosp-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = hosp_90,
+  title = "Overall Hospitalization (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Overall Hospitalization",
+  vlines = raw_vlines
+)
+```
+
+## 15.8 Platinum-Related Hospitalization (AUC >= 4)
+
+```{r}
+#| label: plot-platinum-hosp-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = platinum_related_hosp,
+  title = "Hospitalization for Platinum-Associated AEs (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "Hospitalization for Platinum-Associated AEs",
+  vlines = raw_vlines
+)
+```
+
+## 15.9 90-Day Death (AUC >= 4)
+
+```{r}
+#| label: plot-death-raw-ge4
+loess_plot_raw(
+  data = fm_ge4, x = dose_discrepancy, y = death_90,
+  title = "90-Day Mortality (Carboplatin AUC >= 4)",
+  xlab = "Dose Discrepancy (mg): Actual - Predicted",
+  ylab = "90-Day Mortality",
+  vlines = raw_vlines
+)
+```
+
+# 16 Fine-Gray Competing Risk Models: AUC >= 4, dd_gt25
+
+Same covariate adjustment as Section 11, restricted to carboplatin AUC >= 4 patients.
+
+## 16.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg-ge4-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.2 Grade 2 Anemia
+
+```{r}
+#| label: fg-ge4-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.3 Grade 3 Anemia
+
+```{r}
+#| label: fg-ge4-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg-ge4-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg-ge4-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.6 Grade 2 AKI
+
+```{r}
+#| label: fg-ge4-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.7 Grade 3 AKI
+
+```{r}
+#| label: fg-ge4-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg-ge4-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg-ge4-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 16.10 Cox for Death — dd_gt25 (AUC >= 4)
+
+```{r}
+#| label: cox-ge4-death-dd25
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 17 Fine-Gray Competing Risk Models: AUC >= 4, dd_gt50
+
+Same models as Section 16, using `dd_gt50` as the exposure.
+
+## 17.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg50-ge4-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.2 Grade 2 Anemia
+
+```{r}
+#| label: fg50-ge4-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.3 Grade 3 Anemia
+
+```{r}
+#| label: fg50-ge4-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg50-ge4-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg50-ge4-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.6 Grade 2 AKI
+
+```{r}
+#| label: fg50-ge4-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.7 Grade 3 AKI
+
+```{r}
+#| label: fg50-ge4-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg50-ge4-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg50-ge4-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 17.10 Cox for Death — dd_gt50 (AUC >= 4)
+
+```{r}
+#| label: cox-ge4-death-dd50
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score,
+  data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 18 Fine-Gray Models with Cockcroft-Gault: dd_gt25
+
+Same models as Section 11 with `cockcroft` added as a covariate.
+
+## 18.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg-cg-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.2 Grade 2 Anemia
+
+```{r}
+#| label: fg-cg-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.3 Grade 3 Anemia
+
+```{r}
+#| label: fg-cg-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg-cg-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg-cg-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.6 Grade 2 AKI
+
+```{r}
+#| label: fg-cg-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.7 Grade 3 AKI
+
+```{r}
+#| label: fg-cg-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg-cg-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg-cg-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 18.10 Cox for Death — dd_gt25
+
+```{r}
+#| label: cox-cg-death-dd25
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 19 Fine-Gray Models with Cockcroft-Gault: dd_gt50
+
+Same models as Section 18, using `dd_gt50` as the exposure.
+
+## 19.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg50-cg-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.2 Grade 2 Anemia
+
+```{r}
+#| label: fg50-cg-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.3 Grade 3 Anemia
+
+```{r}
+#| label: fg50-cg-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg50-cg-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg50-cg-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.6 Grade 2 AKI
+
+```{r}
+#| label: fg50-cg-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.7 Grade 3 AKI
+
+```{r}
+#| label: fg50-cg-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg50-cg-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg50-cg-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 19.10 Cox for Death — dd_gt50
+
+```{r}
+#| label: cox-cg-death-dd50
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  data = final_master
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 20 Fine-Gray Models with Cockcroft-Gault: AUC >= 4, dd_gt25
+
+Same models as Section 18, restricted to carboplatin AUC >= 4 patients.
+
+## 20.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg-cg-ge4-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.2 Grade 2 Anemia
+
+```{r}
+#| label: fg-cg-ge4-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.3 Grade 3 Anemia
+
+```{r}
+#| label: fg-cg-ge4-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg-cg-ge4-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg-cg-ge4-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.6 Grade 2 AKI
+
+```{r}
+#| label: fg-cg-ge4-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.7 Grade 3 AKI
+
+```{r}
+#| label: fg-cg-ge4-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg-cg-ge4-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg-cg-ge4-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 20.10 Cox for Death — dd_gt25 (AUC >= 4)
+
+```{r}
+#| label: cox-cg-ge4-death-dd25
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt25 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+# 21 Fine-Gray Models with Cockcroft-Gault: AUC >= 4, dd_gt50
+
+Same models as Section 20, using `dd_gt50` as the exposure.
+
+## 21.1 Platinum-Related Hospitalization (Side Effect)
+
+```{r}
+#| label: fg50-cg-ge4-side-effect
+tidycmprsk::crr(
+  Surv(cmp_time_side_effect, cmp_status_side_effect) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.2 Grade 2 Anemia
+
+```{r}
+#| label: fg50-cg-ge4-anemia-2
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_2, cmp_status_anemia_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.3 Grade 3 Anemia
+
+```{r}
+#| label: fg50-cg-ge4-anemia-3
+tidycmprsk::crr(
+  Surv(cmp_time_anemia_3, cmp_status_anemia_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.4 Grade 2 Thrombocytopenia
+
+```{r}
+#| label: fg50-cg-ge4-throm-2
+tidycmprsk::crr(
+  Surv(cmp_time_throm_2, cmp_status_throm_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.5 Grade 3 Thrombocytopenia
+
+```{r}
+#| label: fg50-cg-ge4-throm-3
+tidycmprsk::crr(
+  Surv(cmp_time_throm_3, cmp_status_throm_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.6 Grade 2 AKI
+
+```{r}
+#| label: fg50-cg-ge4-aki-2
+tidycmprsk::crr(
+  Surv(cmp_time_aki_2, cmp_status_aki_2) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.7 Grade 3 AKI
+
+```{r}
+#| label: fg50-cg-ge4-aki-3
+tidycmprsk::crr(
+  Surv(cmp_time_aki_3, cmp_status_aki_3) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.8 Composite Grade 2 AEs
+
+```{r}
+#| label: fg50-cg-ge4-grade-2-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_2_aes, cmp_status_grade_2_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.9 Composite Grade 3 AEs
+
+```{r}
+#| label: fg50-cg-ge4-grade-3-aes
+tidycmprsk::crr(
+  Surv(cmp_time_grade_3_aes, cmp_status_grade_3_aes) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + pre_HGB_45days + pre_PLT_45days + cockcroft,
+  failcode = 1, data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
+
+## 21.10 Cox for Death — dd_gt50 (AUC >= 4)
+
+```{r}
+#| label: cox-cg-ge4-death-dd50
+coxph(
+  Surv(time_to_death_90, death_90) ~ dd_gt50 + age + sex + bmi + smoking + steroids + thyroid + tumor_stage + ecog_score_cat2 + Paclitaxel + Pemetrexed + Gemcitabine + ici + score + cockcroft,
+  data = fm_ge4
+) %>% tbl_regression(exp = TRUE, pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>% add_n()
+```
