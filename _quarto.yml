@@ -3,8 +3,6 @@ project:
   output-dir: docs
   render:
     - index.qmd
-    - qmd/data_management.qmd
-    - qmd/analysis.qmd
     - qmd/jiaxuan_data.qmd
     - qmd/jiaxuan_whole.qmd
     - qmd/jiaxuan_carbo.qmd
@@ -16,10 +14,6 @@ website:
     left:
       - href: index.qmd
         text: Summary
-      - href: qmd/data_management.qmd
-        text: Data Management
-      - href: qmd/analysis.qmd
-        text: Analysis
       - text: Jiaxuan Project
         menu:
           - href: qmd/jiaxuan_data.qmd
@@ -44,6 +38,7 @@ execute:
   eval: false
   warning: false
   message: false
+  error: true
 
 knitr:
   opts_knit:

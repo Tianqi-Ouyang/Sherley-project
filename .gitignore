@@ -10,3 +10,5 @@
 Data/
 Reference code/
 *.csv
+render.log
+_freeze/
