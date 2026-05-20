@@ -26,14 +26,14 @@ quarto render
 - **`Data/CystatinCInPatientsO_DATA_2026-04-27_0819.csv`** — REDCap export (reused from parent project).
 - RPDR diagnoses / labs / medications are loaded by absolute path from the Partners HealthCare Dropbox (see `qmd/jiaxuan_data.qmd` lines 675/680/686).
 
-### Jiaxuan Project Files (in `qmd/`)
+### Sherley Project Files (in `qmd/`)
 
 - **`jiaxuan_data.qmd`** — Data management pipeline. Produces `jiaxuan_final_master.rds`. Must be rendered first.
 - **`jiaxuan_whole.qmd`** — Whole cohort analysis (all platinum patients).
 - **`jiaxuan_carbo.qmd`** — Carboplatin cohort analysis.
 - **`jiaxuan_carbo_auc3.qmd`** — Carboplatin AUC ≥ 3 subgroup (N=463).
 
-All three analysis files read from `jiaxuan_final_master.rds`. The Quarto website nav has a "Jiaxuan Project" dropdown with all four files.
+All three analysis files read from `jiaxuan_final_master.rds`. The Quarto website nav has a "Sherley Project" dropdown with all four files.
 
 The primary `.Rmd` also loads external data files (RPDR exports: diagnoses, labs, medications, demographics as `.txt`/`.xlsx` files) that are expected to exist in paths hardcoded in the script.
 
@@ -76,7 +76,7 @@ The analysis follows a linear pipeline within the `.Rmd` file:
 - **eGFR capping rules**: Only `ckd_epi_gfr_cre_cys_unindex` is capped at 125 mL/min (unindexing by BSA can produce implausible values). The indexed `ckd_epi_gfr_cre_cys` and `cockcroft` are NOT capped. Use **uncapped** versions for eGFR ratio; use **capped** versions (`ckd_epi_gfr_cre_cys_unindex_cap125`, `cockcroft_cap125`) for dose discrepancy calculations.
 - **dose_discrep_per25increase**: Dose discrepancy (actual − predicted carboplatin dose in mg) divided by 25, so HRs represent per 25 mg increase. Used as an alternative predictor alongside `egfr_ratio_per10`. Only in carbo/AUC3 files.
 
-## Jiaxuan Project — Analysis Structure
+## Sherley Project — Analysis Structure
 
 ### Reference categories
 - **sex**: Female is reference

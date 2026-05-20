@@ -14,7 +14,7 @@ website:
     left:
       - href: index.qmd
         text: Summary
-      - text: Jiaxuan Project
+      - text: Sherley Project
         menu:
           - href: qmd/jiaxuan_data.qmd
             text: Data Management
