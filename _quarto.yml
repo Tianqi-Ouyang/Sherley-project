@@ -3,10 +3,10 @@ project:
   output-dir: docs
   render:
     - index.qmd
-    - qmd/jiaxuan_data.qmd
-    - qmd/jiaxuan_whole.qmd
-    - qmd/jiaxuan_carbo.qmd
-    - qmd/jiaxuan_carbo_auc3.qmd
+    - qmd/sherley_data.qmd
+    - qmd/sherley_whole.qmd
+    - qmd/sherley_carbo.qmd
+    - qmd/sherley_carbo_auc3.qmd
 
 website:
   title: "Sherley Cohort — CysC / Creatinine Ratio – Platinum AE"
@@ -16,13 +16,13 @@ website:
         text: Summary
       - text: Sherley Project
         menu:
-          - href: qmd/jiaxuan_data.qmd
+          - href: qmd/sherley_data.qmd
             text: Data Management
-          - href: qmd/jiaxuan_whole.qmd
+          - href: qmd/sherley_whole.qmd
             text: Whole Cohort
-          - href: qmd/jiaxuan_carbo.qmd
+          - href: qmd/sherley_carbo.qmd
             text: Carboplatin Cohort
-          - href: qmd/jiaxuan_carbo_auc3.qmd
+          - href: qmd/sherley_carbo_auc3.qmd
             text: Carboplatin AUC ≥ 3
 
 format:

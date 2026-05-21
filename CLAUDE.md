@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a clinical research analysis project investigating whether the baseline creatinine-to-cystatin C ratio predicts adverse events in cancer patients receiving platinum-based chemotherapy (cisplatin/carboplatin). The primary exposure is `cr_cys_7` (creatinine/cystatin C ratio < 0.7).
 
-This is the **Sherley cohort** — an N=169 EMPI sub-cohort filtered from the same REDCap export and RPDR pull used by the parent Cystatin C / Jiaxuan project (https://github.com/Tianqi-Ouyang/Cys-C-project-). The pipeline, variables, models, and outputs are identical; only the EMPI inclusion list changes.
+This is the **Sherley cohort** — an N=169 EMPI sub-cohort filtered from the same REDCap export and RPDR pull used by the parent Cystatin C / Sherley project (https://github.com/Tianqi-Ouyang/Cys-C-project-). The pipeline, variables, models, and outputs are identical; only the EMPI inclusion list changes.
 
 ## Running the Analysis
 
@@ -18,22 +18,22 @@ This project uses Quarto. Render the website from the project root:
 quarto render
 ```
 
-`qmd/jiaxuan_data.qmd` runs first and writes `jiaxuan_final_master.rds`; the three downstream `jiaxuan_*` analysis files consume that rds. Output lands in `docs/`.
+`qmd/sherley_data.qmd` runs first and writes `sherley_final_master.rds`; the three downstream `sherley_*` analysis files consume that rds. Output lands in `docs/`.
 
 ## Files
 
 - **`Data/Patient IDS_Tianqi_20May2026.xlsx`** — Sherley EMPI inclusion list (Sheet3, N=169).
 - **`Data/CystatinCInPatientsO_DATA_2026-04-27_0819.csv`** — REDCap export (reused from parent project).
-- RPDR diagnoses / labs / medications are loaded by absolute path from the Partners HealthCare Dropbox (see `qmd/jiaxuan_data.qmd` lines 675/680/686).
+- RPDR diagnoses / labs / medications are loaded by absolute path from the Partners HealthCare Dropbox (see `qmd/sherley_data.qmd` lines 675/680/686).
 
 ### Sherley Project Files (in `qmd/`)
 
-- **`jiaxuan_data.qmd`** — Data management pipeline. Produces `jiaxuan_final_master.rds`. Must be rendered first.
-- **`jiaxuan_whole.qmd`** — Whole cohort analysis (all platinum patients).
-- **`jiaxuan_carbo.qmd`** — Carboplatin cohort analysis.
-- **`jiaxuan_carbo_auc3.qmd`** — Carboplatin AUC ≥ 3 subgroup (N=463).
+- **`sherley_data.qmd`** — Data management pipeline. Produces `sherley_final_master.rds`. Must be rendered first.
+- **`sherley_whole.qmd`** — Whole cohort analysis (all platinum patients).
+- **`sherley_carbo.qmd`** — Carboplatin cohort analysis.
+- **`sherley_carbo_auc3.qmd`** — Carboplatin AUC ≥ 3 subgroup (N=463).
 
-All three analysis files read from `jiaxuan_final_master.rds`. The Quarto website nav has a "Sherley Project" dropdown with all four files.
+All three analysis files read from `sherley_final_master.rds`. The Quarto website nav has a "Sherley Project" dropdown with all four files.
 
 The primary `.Rmd` also loads external data files (RPDR exports: diagnoses, labs, medications, demographics as `.txt`/`.xlsx` files) that are expected to exist in paths hardcoded in the script.
 
@@ -88,7 +88,7 @@ The analysis follows a linear pipeline within the `.Rmd` file:
 - **dose_discrep_per25increase**: `dose_discrepancy / 25` (carbo/AUC3 only)
 - **abs_dose_discrep_cat**: Absolute dose discrepancy binned: <25, 25–49.99, 50–74.99, 75–99.99, ≥100 mg (carbo/AUC3 only)
 
-### Section structure (whole cohort: `jiaxuan_whole.qmd`)
+### Section structure (whole cohort: `sherley_whole.qmd`)
 1. Setup
 2. Table 1
 3. Fine-Gray Models — eGFR Ratio (adjusted for Cockcroft-Gault)

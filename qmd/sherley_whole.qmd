@@ -53,8 +53,8 @@ save_tbl_docx <- function(tbl, docx_name) {
   )
 }
 
-# Load whole-cohort final_master from Jiaxuan data management
-dat <- readRDS("jiaxuan_final_master.rds")
+# Load whole-cohort final_master from Sherley data management
+dat <- readRDS("sherley_final_master.rds")
 
 # Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault
 # Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for
@@ -111,6 +111,60 @@ ggplot(ratio_hist, aes(x = egfr_ratio)) +
        y = "Percent of Patients (%)") +
   scale_x_continuous(breaks = seq(0, 3, 0.2)) +
   theme_minimal(base_size = 14)
+```
+
+# Event Counts by Outcome (Diagnostic)
+
+For each outcome the table below shows the cohort N, events (status = 1 within 90 days), competing deaths (status = 2; not applicable to 90-day death which is modelled by Cox PH), censored, event rate, and events-per-variable (EPV) using the base adjuster set. As a rule of thumb, Fine-Gray fits need **≥ 5 × adj** events to be stable; **< 2 × adj** almost always produces a singular design matrix, which is why the helper functions in this file fall back to a "Model could not be fit" placeholder where you see one.
+
+```{r}
+#| label: jx-event-counts-whole
+.outcomes_tbl <- function(dat, cohort_label, n_adj = 16) {
+  sumrow <- function(label, status_var, is_cox = FALSE) {
+    s <- suppressWarnings(as.integer(as.character(dat[[status_var]])))
+    n_total     <- sum(!is.na(s))
+    n_event     <- sum(s == 1, na.rm = TRUE)
+    n_compdeath <- if (is_cox) NA_integer_ else sum(s == 2, na.rm = TRUE)
+    n_cens      <- sum(s == 0, na.rm = TRUE)
+    epv         <- if (n_total > 0) n_event / n_adj else NA_real_
+    fit_likely  <- if (is.na(epv))                "—"
+                   else if (n_event >= 5 * n_adj) "✓ likely OK"
+                   else if (n_event >= 2 * n_adj) "marginal"
+                   else                           "✗ singular likely"
+    tibble::tibble(
+      Outcome            = label,
+      N                  = n_total,
+      Events             = n_event,
+      `Competing deaths` = n_compdeath,
+      Censored           = n_cens,
+      `Event rate`       = if (n_total > 0) sprintf("%.1f%%", 100 * n_event / n_total) else "—",
+      EPV                = if (!is.na(epv)) sprintf("%.1f", epv) else "—",
+      `Fit reliable?`    = fit_likely
+    )
+  }
+  dplyr::bind_rows(
+    sumrow("Anemia Grade 2",                   "cmp_status_anemia_2"),
+    sumrow("Anemia Grade 3",                   "cmp_status_anemia_3"),
+    sumrow("Thrombocytopenia Grade 2",         "cmp_status_throm_2"),
+    sumrow("Thrombocytopenia Grade 3",         "cmp_status_throm_3"),
+    sumrow("AKI Grade 2",                      "cmp_status_aki_2"),
+    sumrow("AKI (KDIGO)",                      "cmp_status_aki_kdigo"),
+    sumrow("Composite Grade 2 AEs",            "cmp_status_grade_2_aes"),
+    sumrow("Composite Grade 3 AEs",            "cmp_status_grade_3_aes"),
+    sumrow("Overall Hospitalization",          "cmp_status_any_hosp"),
+    sumrow("Platinum-Related Hospitalization", "cmp_status_side_effect"),
+    sumrow("90-Day Death (Cox PH)",            "death_90", is_cox = TRUE)
+  )
+}
+
+knitr::kable(
+  .outcomes_tbl(dat, "whole cohort"),
+  align = c("l","r","r","r","r","r","r","l"),
+  caption = sprintf(
+    "Event counts for the **whole cohort** (N = %d). EPV uses ~16 base adjusters.",
+    nrow(dat)
+  )
+)
 ```
 
 # 4 Fine-Gray Models — eGFR Ratio (adjusted for Cockcroft-Gault)

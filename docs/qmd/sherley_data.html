@@ -138,19 +138,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     </a>
     <ul class="dropdown-menu" aria-labelledby="nav-menu-sherley-project">    
         <li>
-    <a class="dropdown-item" href="../qmd/jiaxuan_data.html">
+    <a class="dropdown-item" href="../qmd/sherley_data.html">
  <span class="dropdown-text">Data Management</span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../qmd/jiaxuan_whole.html">
+    <a class="dropdown-item" href="../qmd/sherley_whole.html">
  <span class="dropdown-text">Whole Cohort</span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../qmd/jiaxuan_carbo.html">
+    <a class="dropdown-item" href="../qmd/sherley_carbo.html">
  <span class="dropdown-text">Carboplatin Cohort</span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../qmd/jiaxuan_carbo_auc3.html">
+    <a class="dropdown-item" href="../qmd/sherley_carbo_auc3.html">
  <span class="dropdown-text">Carboplatin AUC ≥ 3</span></a>
   </li>  
     </ul>
@@ -1013,7 +1013,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="pre_lab">3.5 pre_lab</h2>
 <p>Finds the <strong>closest lab value on or before</strong> <code>index_date</code> within the time window. Returns one row per patient (most recent qualifying lab result).</p>
 <blockquote class="blockquote">
-<p>See <strong>Section 6.1</strong> for the bug found in Jiaxuan’s version of this function and how Copy 709 correctly implements it.</p>
+<p>See <strong>Section 6.1</strong> for the bug found in Sherley’s version of this function and how Copy 709 correctly implements it.</p>
 </blockquote>
 <div class="cell">
 <details class="code-fold">
@@ -2145,9 +2145,9 @@ Thoracic   Breast       GI       GU      GYN    HEENT    Other
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># hiv_rpdr: HIV status from RPDR diagnoses + medications (Jiaxuan's pipeline).</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># hiv_rpdr: HIV status from RPDR diagnoses + medications (Sherley's pipeline).</span></span>
 <span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: There is no hiv column in the REDCap CSV. The hiv variable in Copy 709 / cleaned_master</span></span>
-<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a><span class="co"># was always derived from RPDR. Jiaxuan's final code Rmd used the name hiv_new.</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a><span class="co"># was always derived from RPDR. Sherley's final code Rmd used the name hiv_new.</span></span>
 <span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
 <span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: dia_list_name with HIV terms, excluding false-positive diagnosis names</span></span>
 <span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: Further exclude patients whose HIV diagnosis co-occurs with hepatitis B/C</span></span>
@@ -2383,7 +2383,7 @@ Thoracic   Breast       GI       GU      GYN    HEENT    Other
 <span id="cb55-69"><a href="#cb55-69" aria-hidden="true" tabindex="-1"></a>final_master <span class="ot">&lt;-</span> final_master <span class="sc">%&gt;%</span> <span class="fu">filter</span>(record_id <span class="sc">!=</span> <span class="dv">911</span>)</span>
 <span id="cb55-70"><a href="#cb55-70" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb55-71"><a href="#cb55-71" aria-hidden="true" tabindex="-1"></a><span class="co"># Save final_master for use by analysis.qmd</span></span>
-<span id="cb55-72"><a href="#cb55-72" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(final_master, <span class="st">"jiaxuan_final_master.rds"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb55-72"><a href="#cb55-72" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(final_master, <span class="st">"sherley_final_master.rds"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 </div>
 </section>

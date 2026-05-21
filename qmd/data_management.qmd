@@ -384,7 +384,7 @@ cmp_variable <- function(data, event_time, event_status, name) {
 Finds the **closest lab value on or before** `index_date` within the time window.
 Returns one row per patient (most recent qualifying lab result).
 
-> See **Section 6.1** for the bug found in Jiaxuan's version of this function
+> See **Section 6.1** for the bug found in Sherley's version of this function
 > and how Copy 709 correctly implements it.
 
 ```{r}
@@ -1259,9 +1259,9 @@ final_master <- final_master %>%
 
 ```{r}
 #| label: clean-hiv-rpdr
-# hiv_rpdr: HIV status from RPDR diagnoses + medications (Jiaxuan's pipeline).
+# hiv_rpdr: HIV status from RPDR diagnoses + medications (Sherley's pipeline).
 # Note: There is no hiv column in the REDCap CSV. The hiv variable in Copy 709 / cleaned_master
-# was always derived from RPDR. Jiaxuan's final code Rmd used the name hiv_new.
+# was always derived from RPDR. Sherley's final code Rmd used the name hiv_new.
 #
 # Step 1: dia_list_name with HIV terms, excluding false-positive diagnosis names
 # Step 2: Further exclude patients whose HIV diagnosis co-occurs with hepatitis B/C

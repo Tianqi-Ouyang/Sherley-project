@@ -2,7 +2,7 @@
 
 Clinical-research analysis investigating whether the baseline creatinine / cystatin-C ratio (`cr_cys_7`) predicts adverse events in cancer patients receiving platinum-based chemotherapy.
 
-This repository is the **Sherley sub-cohort** (N=169 EMPIs from `Data/Patient IDS_Tianqi_20May2026.xlsx`) of the parent Cystatin C / Jiaxuan project: <https://github.com/Tianqi-Ouyang/Cys-C-project->. The pipeline, derived variables, and statistical models are identical; only the EMPI inclusion list differs.
+This repository is the **Sherley sub-cohort** (N=169 EMPIs from `Data/Patient IDS_Tianqi_20May2026.xlsx`) of the parent Cystatin C / Sherley project: <https://github.com/Tianqi-Ouyang/Cys-C-project->. The pipeline, derived variables, and statistical models are identical; only the EMPI inclusion list differs.
 
 ## Render
 
@@ -10,7 +10,7 @@ This repository is the **Sherley sub-cohort** (N=169 EMPIs from `Data/Patient ID
 quarto render
 ```
 
-`qmd/jiaxuan_data.qmd` runs first and produces `jiaxuan_final_master.rds`; the three `jiaxuan_*` analysis files consume that rds. Rendered website + Word tables land in `docs/`.
+`qmd/sherley_data.qmd` runs first and produces `sherley_final_master.rds`; the three `sherley_*` analysis files consume that rds. Rendered website + Word tables land in `docs/`.
 
 ## Inputs (not committed)
 
