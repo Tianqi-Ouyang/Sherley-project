@@ -204,11 +204,11 @@ ggplot(ratio_hist, aes(x = egfr_ratio)) +
 
 # Event Counts by Outcome (Diagnostic)
 
-For each outcome the table below shows the cohort N, events (status = 1 within 90 days), competing deaths (status = 2; not applicable to 90-day death which is modelled by Cox PH), censored, event rate, and events-per-variable (EPV) using the base adjuster set. As a rule of thumb, Fine-Gray fits need **≥ 5 × adj** events to be stable; **< 2 × adj** almost always produces a singular design matrix, which is why the helper functions in this file fall back to a "Model could not be fit" placeholder where you see one.
+For each outcome the table below shows the cohort N, events (status = 1 within 90 days), competing deaths (status = 2; not applicable to 90-day death which is modelled by Cox PH), censored, event rate, and events-per-variable (EPV) using the **4-variable adjuster set** for this cohort (`age`, `sex`, `score` (Charlson), `ici`). As a rule of thumb, Fine-Gray fits need **≥ 5 × adj** events to be stable; **< 2 × adj** almost always produces a singular design matrix, which is why the helper functions in this file fall back to a "Model could not be fit" placeholder where you see one.
 
 ```{r}
 #| label: jx-event-counts-carbo
-.outcomes_tbl <- function(dat, cohort_label, n_adj = 16) {
+.outcomes_tbl <- function(dat, cohort_label, n_adj = 4) {
   sumrow <- function(label, status_var, is_cox = FALSE) {
     s <- suppressWarnings(as.integer(as.character(dat[[status_var]])))
     n_total     <- sum(!is.na(s))
@@ -250,13 +250,13 @@ knitr::kable(
   .outcomes_tbl(dat, "carboplatin cohort"),
   align = c("l","r","r","r","r","r","r","l"),
   caption = sprintf(
-    "Event counts for the **carboplatin cohort** (N = %d). EPV uses ~16 base adjusters.",
+    "Event counts for the **carboplatin cohort** (N = %d). EPV uses 4 adjusters (age, sex, score, ici).",
     nrow(dat)
   )
 )
 ```
 
-# 5 Fine-Gray Models — eGFR Ratio (adjusted for Cockcroft-Gault) (Carboplatin)
+# 5 Fine-Gray Models — eGFR Ratio (Carboplatin)
 
 Each table below shows univariable (one variable at a time) and multivariable Fine-Gray subdistribution hazard ratios side-by-side. A Word version of every table is saved during render — click any link below to download:
 
@@ -270,14 +270,10 @@ Each table below shows univariable (one variable at a time) and multivariable Fi
 ```{r}
 #| label: jx-carbo-fg-helper
 .adj_set <- function(pre_labs, egfr_adj) {
-  adj <- c("age","sex","score","ecog_score_cat2",
-           "cancer_type_cat_7","tumor_stage","high_dose",
-           "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-           "bmi","smoking","steroids","thyroid")
-  if (egfr_adj == "cockcroft") adj <- c(adj, "cockcroft")
-  if (egfr_adj == "ckd_epi")   adj <- c(adj, "ckd_epi_gfr_cre_cys_unindex")
-  if (!is.null(pre_labs)) adj <- c(adj, pre_labs)
-  adj
+  # Minimal adjuster set for the Sherley sub-cohort (N=169): only the four
+  # demographic/clinical confounders the user specified. The egfr_adj and
+  # pre_labs arguments are accepted for backward compatibility but ignored.
+  c("age", "sex", "score", "ici")
 }
 
 # fg_model: returns univariable + multivariable merged Fine-Gray table.
@@ -453,16 +449,12 @@ fg_model("cmp_time_side_effect", "cmp_status_side_effect", "egfr_ratio_per10", e
 cox_model("time_to_death_90", "death_90", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_death_90")
 ```
 
-# 6 Cause-Specific Hazard Models — eGFR Ratio (adjusted for Cockcroft-Gault) (Carboplatin)
+# 6 Cause-Specific Hazard Models — eGFR Ratio (Carboplatin)
 
 ```{r}
 #| label: jx-carbo-csh-helper
 csh_model <- function(time_var, status_var, pred_var, pre_labs = NULL) {
-  adj <- c("age","sex","score","ecog_score_cat2",
-           "cancer_type_cat_7","tumor_stage","high_dose",
-           "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-           "bmi","smoking","steroids","thyroid","cockcroft")
-  if (!is.null(pre_labs)) adj <- c(adj, pre_labs)
+  adj <- c("age", "sex", "score", "ici")
   d <- dat
   d$csh_status <- ifelse(d[[status_var]] == 1, 1L, 0L)
   fmla <- as.formula(paste0(
@@ -556,7 +548,7 @@ csh_model("cmp_time_side_effect", "cmp_status_side_effect", "egfr_ratio_per10")
 cox_model("time_to_death_90", "death_90", "egfr_ratio_per10", egfr_adj = "cockcroft")
 ```
 
-# 7 Fine-Gray Models — Dose Discrepancy per 25 mg (adjusted for Cockcroft-Gault) (Carboplatin)
+# 7 Fine-Gray Models — Dose Discrepancy per 25 mg (Carboplatin)
 
 ## 7.1 Anemia Grade 2
 
@@ -635,7 +627,7 @@ fg_model("cmp_time_side_effect", "cmp_status_side_effect", "dose_discrep_per25in
 cox_model("time_to_death_90", "death_90", "dose_discrep_per25increase", egfr_adj = "cockcroft")
 ```
 
-# 8 Cause-Specific Hazard Models — Dose Discrepancy per 25 mg (adjusted for Cockcroft-Gault) (Carboplatin)
+# 8 Cause-Specific Hazard Models — Dose Discrepancy per 25 mg (Carboplatin)
 
 ## 8.1 Anemia Grade 2
 
@@ -730,10 +722,7 @@ Three reasons to anchor at the **median**:
 #| label: jx-carbo-linsubhr-ratio-helper
 plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
                                     outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("egfr_ratio", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -783,10 +772,7 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
 
 plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
                                   outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("egfr_ratio", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -944,10 +930,7 @@ plot_cox_linear_ratio("time_to_death_90", "death_90",
 #| label: jx-carbo-linsubhr-disc-egfr-helper
 plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
                                        outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("egfr_discrepancy", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -1011,10 +994,7 @@ plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
 
 plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
                                      outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("egfr_discrepancy", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -1186,10 +1166,7 @@ plot_cox_linear_egfrdisc("time_to_death_90", "death_90",
 #| label: jx-carbo-linsubhr-dosedisc-helper
 plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
                               outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("dose_discrepancy", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -1239,10 +1216,7 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
 
 plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
                             outcome_label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2","cockcroft",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid")
+  base_adj <- c("age", "sex", "score", "ici")
   keep <- c("dose_discrepancy", time_var, status_var, base_adj, extra_adj)
   d <- dat %>% dplyr::select(all_of(keep)) %>% tidyr::drop_na()
 
@@ -1543,10 +1517,7 @@ Standardized cumulative incidence functions for each competing-risk outcome, con
 ```{r}
 #| label: jx-carbo-adjcif-helper
 adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid","cockcroft")
+  base_adj <- c("age", "sex", "score", "ici")
   vars <- c("dose_discrep_ge25", base_adj, extra_pre)
   d <- dat %>%
     dplyr::select(all_of(c(time_var, status_var, vars))) %>%
@@ -1614,10 +1585,7 @@ adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
 
 adj_death_curve <- function(time_var = "time_to_death_90",
                             status_var = "death_90", label) {
-  base_adj <- c("age","sex","score","ecog_score_cat2",
-                "cancer_type_cat_7","tumor_stage","high_dose",
-                "Paclitaxel","Pemetrexed","Gemcitabine","ici",
-                "bmi","smoking","steroids","thyroid","cockcroft")
+  base_adj <- c("age", "sex", "score", "ici")
   vars <- c("dose_discrep_ge25", base_adj)
   d <- dat %>%
     dplyr::select(all_of(c(time_var, status_var, vars))) %>%

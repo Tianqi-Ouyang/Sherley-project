@@ -4,9 +4,7 @@ project:
   render:
     - index.qmd
     - qmd/sherley_data.qmd
-    - qmd/sherley_whole.qmd
     - qmd/sherley_carbo.qmd
-    - qmd/sherley_carbo_auc3.qmd
 
 website:
   title: "Sherley Cohort — CysC / Creatinine Ratio – Platinum AE"
@@ -14,16 +12,8 @@ website:
     left:
       - href: index.qmd
         text: Summary
-      - text: Sherley Project
-        menu:
-          - href: qmd/sherley_data.qmd
-            text: Data Management
-          - href: qmd/sherley_whole.qmd
-            text: Whole Cohort
-          - href: qmd/sherley_carbo.qmd
-            text: Carboplatin Cohort
-          - href: qmd/sherley_carbo_auc3.qmd
-            text: Carboplatin AUC ≥ 3
+      - href: qmd/sherley_carbo.qmd
+        text: Carboplatin Cohort
 
 format:
   html:
