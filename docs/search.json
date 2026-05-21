@@ -4,7 +4,7 @@
     "href": "qmd/jiaxuan_carbo_auc3.html",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "",
-    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables\ndocx_dir &lt;- \"docs/tables/auc3\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Load whole-cohort data, then keep only carboplatin patients\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\") %&gt;%\n  filter(platin_group == \"Carboplatin\", carbo_AUC &gt;= 3)\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Capped versions (for dose discrepancy calculations)\n    cockcroft_cap125 = pmin(cockcroft, 125),\n    # ckd_epi_gfr_cre_cys_unindex_cap125 already exists in data\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    # Dose discrepancy uses CAPPED eGFR (already computed in jiaxuan_data.qmd)\n    dose_discrep_per25increase = dose_discrepancy / 25,\n    abs_dose_discrep = abs(dose_discrepancy),\n    abs_dose_discrep_cat = cut(abs_dose_discrep,\n      breaks = c(0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;25\", \"25-49.99\", \"50-74.99\", \"75-99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    # Binary exposure for adjusted CIF curves (Section 14): 1 if patient was\n    # over-dosed by 25 mg or more (actual - predicted &gt;= 25), else 0.\n    dose_discrep_ge25 = as.integer(dose_discrepancy &gt;= 25),\n    # Signed dose discrepancy = actual - predicted; 10 bins symmetric around 0.\n    signed_dose_discrep_cat = cut(dose_discrepancy,\n      breaks = c(-Inf, -100, -75, -50, -25, 0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;=-100\", \"-99.99 to -75\", \"-74.99 to -50\",\n                 \"-49.99 to -25\", \"-24.99 to 0\",\n                 \"0 to 24.99\", \"25 to 49.99\", \"50 to 74.99\",\n                 \"75 to 99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )\n\ncat(\"Carboplatin AUC &gt;= 3 cohort N =\", nrow(dat), \"\\n\")\n\n\nCarboplatin AUC &gt;= 3 cohort N = 121"
+    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables\ndocx_dir &lt;- \"docs/tables/auc3\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Fallback renderers for when a model fit fails (singular design matrix etc.)\n# on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,\n# csh_model, cox_model, and the plot_* helpers.\n.plot_failed &lt;- function(label = \"Model could not be fit\") {\n  ggplot() +\n    annotate(\"text\", x = 0.5, y = 0.5,\n             label = paste0(label, \"\\n(singular design — cohort too small)\"),\n             size = 3.5) +\n    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +\n    theme_void()\n}\n.tbl_failed &lt;- function() {\n  knitr::asis_output(\n    \"&gt; *Model could not be fit — design matrix is singular for this sub-cohort.*\"\n  )\n}\n\n# Load whole-cohort data, then keep only carboplatin patients\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\") %&gt;%\n  filter(platin_group == \"Carboplatin\", carbo_AUC &gt;= 3)\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Capped versions (for dose discrepancy calculations)\n    cockcroft_cap125 = pmin(cockcroft, 125),\n    # ckd_epi_gfr_cre_cys_unindex_cap125 already exists in data\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    # Dose discrepancy uses CAPPED eGFR (already computed in jiaxuan_data.qmd)\n    dose_discrep_per25increase = dose_discrepancy / 25,\n    abs_dose_discrep = abs(dose_discrepancy),\n    abs_dose_discrep_cat = cut(abs_dose_discrep,\n      breaks = c(0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;25\", \"25-49.99\", \"50-74.99\", \"75-99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    # Binary exposure for adjusted CIF curves (Section 14): 1 if patient was\n    # over-dosed by 25 mg or more (actual - predicted &gt;= 25), else 0.\n    dose_discrep_ge25 = as.integer(dose_discrepancy &gt;= 25),\n    # Signed dose discrepancy = actual - predicted; 10 bins symmetric around 0.\n    signed_dose_discrep_cat = cut(dose_discrepancy,\n      breaks = c(-Inf, -100, -75, -50, -25, 0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;=-100\", \"-99.99 to -75\", \"-74.99 to -50\",\n                 \"-49.99 to -25\", \"-24.99 to 0\",\n                 \"0 to 24.99\", \"25 to 49.99\", \"50 to 74.99\",\n                 \"75 to 99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )\n\ncat(\"Carboplatin AUC &gt;= 3 cohort N =\", nrow(dat), \"\\n\")\n\n\nCarboplatin AUC &gt;= 3 cohort N = 121"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#signed-dose-discrepancy-distribution",
@@ -18,70 +18,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.1 Anemia Grade 2",
-    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.2 Anemia Grade 3",
-    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.3 Thrombocytopenia Grade 2",
-    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.4 Thrombocytopenia Grade 3",
-    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.5 AKI Grade 2",
-    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.6 AKI (KDIGO)",
-    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_kdigo\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_kdigo\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.7 Composite Grade 2 AEs",
-    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_2_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_2_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.8 Composite Grade 3 AEs",
-    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_3_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_3_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.9 Overall Hospitalization",
-    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_any_hosp\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_any_hosp\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "4.10 Platinum-Related Hospitalization",
-    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_side_effect\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_side_effect\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph",
@@ -172,70 +172,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.1 Anemia Grade 2",
-    "text": "6.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.2 Anemia Grade 3",
-    "text": "6.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.3 Thrombocytopenia Grade 2",
-    "text": "6.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.4 Thrombocytopenia Grade 3",
-    "text": "6.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.5 AKI Grade 2",
-    "text": "6.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.6 AKI (KDIGO)",
-    "text": "6.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.7 Composite Grade 2 AEs",
-    "text": "6.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.8 Composite Grade 3 AEs",
-    "text": "6.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.9 Overall Hospitalization",
-    "text": "6.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-2",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-2",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "6.10 Platinum-Related Hospitalization",
-    "text": "6.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "6.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph-2",
@@ -326,70 +326,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.1 Anemia Grade 2",
-    "text": "8.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.2 Anemia Grade 3",
-    "text": "8.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.3 Thrombocytopenia Grade 2",
-    "text": "8.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.4 Thrombocytopenia Grade 3",
-    "text": "8.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.5 AKI Grade 2",
-    "text": "8.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.6 AKI (KDIGO)",
-    "text": "8.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.7 Composite Grade 2 AEs",
-    "text": "8.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.8 Composite Grade 3 AEs",
-    "text": "8.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.9 Overall Hospitalization",
-    "text": "8.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-4",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-4",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "8.10 Platinum-Related Hospitalization",
-    "text": "8.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph-4",
@@ -403,70 +403,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.1 Anemia Grade 2",
-    "text": "9.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                           \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                           \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.2 Anemia Grade 3",
-    "text": "9.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                           \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                           \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.3 Thrombocytopenia Grade 2",
-    "text": "9.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.4 Thrombocytopenia Grade 3",
-    "text": "9.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.5 AKI Grade 2",
-    "text": "9.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                           NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                           NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.6 AKI (KDIGO)",
-    "text": "9.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                           NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                           NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.7 Composite Grade 2 AEs",
-    "text": "9.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                           NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                           NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.8 Composite Grade 3 AEs",
-    "text": "9.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                           NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                           NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.9 Overall Hospitalization",
-    "text": "9.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                           NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                           NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-5",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-5",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "9.10 Platinum-Related Hospitalization",
-    "text": "9.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                           NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "9.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                           NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph-5",
@@ -480,70 +480,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.1 Anemia Grade 2",
-    "text": "10.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                  \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                  \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.2 Anemia Grade 3",
-    "text": "10.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                  \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                  \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.3 Thrombocytopenia Grade 2",
-    "text": "10.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.4 Thrombocytopenia Grade 3",
-    "text": "10.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.5 AKI Grade 2",
-    "text": "10.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                  NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                  NULL, \"AKI Grade 2 (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.6 AKI (KDIGO)",
-    "text": "10.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                  NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                  NULL, \"AKI (KDIGO) (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.7 Composite Grade 2 AEs",
-    "text": "10.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                  NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                  NULL, \"Composite Grade 2 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.8 Composite Grade 3 AEs",
-    "text": "10.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                  NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                  NULL, \"Composite Grade 3 AEs (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.9 Overall Hospitalization",
-    "text": "10.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                  NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                  NULL, \"Overall Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-6",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-6",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "10.10 Platinum-Related Hospitalization",
-    "text": "10.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                  NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "10.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                  NULL, \"Platinum-Related Hospitalization (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph-6",
@@ -557,70 +557,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#nauseavomitinggi",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.1 Nausea/Vomiting/GI",
-    "text": "12.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#failure-to-thrivefatiguedehydration",
     "href": "qmd/jiaxuan_carbo_auc3.html#failure-to-thrivefatiguedehydration",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.2 Failure to Thrive/Fatigue/Dehydration",
-    "text": "12.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.3 AKI",
-    "text": "12.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#electrolyte-abnormalities",
     "href": "qmd/jiaxuan_carbo_auc3.html#electrolyte-abnormalities",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.4 Electrolyte Abnormalities",
-    "text": "12.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#cytopenia",
     "href": "qmd/jiaxuan_carbo_auc3.html#cytopenia",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.5 Cytopenia",
-    "text": "12.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#febrile-neutropenia",
     "href": "qmd/jiaxuan_carbo_auc3.html#febrile-neutropenia",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.6 Febrile Neutropenia",
-    "text": "12.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#infectionsepsis",
     "href": "qmd/jiaxuan_carbo_auc3.html#infectionsepsis",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.7 Infection/Sepsis",
-    "text": "12.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#cancer-progression",
     "href": "qmd/jiaxuan_carbo_auc3.html#cancer-progression",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.8 Cancer Progression",
-    "text": "12.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#immune-related-ae-other",
     "href": "qmd/jiaxuan_carbo_auc3.html#immune-related-ae-other",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.9 Immune-related AE & Other",
-    "text": "12.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#planned-surgeryport",
     "href": "qmd/jiaxuan_carbo_auc3.html#planned-surgeryport",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "12.10 Planned Surgery/Port",
-    "text": "12.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port (Carboplatin AUC ≥ 3)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "12.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port (Carboplatin AUC ≥ 3)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#dose-discrepancy-vs-ckd-epi-cr-cys-unindexed",
@@ -641,70 +641,70 @@
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-2-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.1 Anemia Grade 2",
-    "text": "14.1 Anemia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n        \"pre_HGB_45days\", \"Anemia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.1 Anemia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n        \"pre_HGB_45days\", \"Anemia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#anemia-grade-3-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.2 Anemia Grade 3",
-    "text": "14.2 Anemia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n        \"pre_HGB_45days\", \"Anemia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.2 Anemia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n        \"pre_HGB_45days\", \"Anemia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-2-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.3 Thrombocytopenia Grade 2",
-    "text": "14.3 Thrombocytopenia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.3 Thrombocytopenia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#thrombocytopenia-grade-3-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.4 Thrombocytopenia Grade 3",
-    "text": "14.4 Thrombocytopenia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.4 Thrombocytopenia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-grade-2-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.5 AKI Grade 2",
-    "text": "14.5 AKI Grade 2\n\n\nCode\nadj_cif(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n        NULL, \"AKI Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.5 AKI Grade 2\n\n\nCode\nadj_cif(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n        NULL, \"AKI Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#aki-kdigo-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.6 AKI (KDIGO)",
-    "text": "14.6 AKI (KDIGO)\n\n\nCode\nadj_cif(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n        NULL, \"AKI (KDIGO)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.6 AKI (KDIGO)\n\n\nCode\nadj_cif(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n        NULL, \"AKI (KDIGO)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-2-aes-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.7 Composite Grade 2 AEs",
-    "text": "14.7 Composite Grade 2 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n        NULL, \"Composite Grade 2 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.7 Composite Grade 2 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n        NULL, \"Composite Grade 2 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#composite-grade-3-aes-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.8 Composite Grade 3 AEs",
-    "text": "14.8 Composite Grade 3 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n        NULL, \"Composite Grade 3 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.8 Composite Grade 3 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n        NULL, \"Composite Grade 3 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#overall-hospitalization-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.9 Overall Hospitalization",
-    "text": "14.9 Overall Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n        NULL, \"Overall Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.9 Overall Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n        NULL, \"Overall Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-7",
     "href": "qmd/jiaxuan_carbo_auc3.html#platinum-related-hospitalization-7",
     "title": "Sherley Project — Carboplatin AUC ≥ 3 Cohort",
     "section": "14.10 Platinum-Related Hospitalization",
-    "text": "14.10 Platinum-Related Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n        NULL, \"Platinum-Related Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.10 Platinum-Related Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n        NULL, \"Platinum-Related Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo_auc3.html#day-death-cox-ph-7",
@@ -718,77 +718,77 @@
     "href": "qmd/jiaxuan_whole.html",
     "title": "Sherley Project — Whole Cohort",
     "section": "",
-    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables (placed under docs/ so the\n# rendered website can serve them from ../tables/whole/&lt;name&gt;.docx).\ndocx_dir &lt;- \"docs/tables/whole\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\n# Save a gtsummary table to a Word document.\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Load whole-cohort final_master from Jiaxuan data management\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\")\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )"
+    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables (placed under docs/ so the\n# rendered website can serve them from ../tables/whole/&lt;name&gt;.docx).\ndocx_dir &lt;- \"docs/tables/whole\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\n# Save a gtsummary table to a Word document.\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Fallback renderers for when a model fit fails (singular design matrix etc.)\n# on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,\n# csh_model, cox_model, and the plot_* helpers.\n.plot_failed &lt;- function(label = \"Model could not be fit\") {\n  ggplot() +\n    annotate(\"text\", x = 0.5, y = 0.5,\n             label = paste0(label, \"\\n(singular design — cohort too small)\"),\n             size = 3.5) +\n    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +\n    theme_void()\n}\n.tbl_failed &lt;- function() {\n  knitr::asis_output(\n    \"&gt; *Model could not be fit — design matrix is singular for this sub-cohort.*\"\n  )\n}\n\n# Load whole-cohort final_master from Jiaxuan data management\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\")\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#anemia-grade-2",
     "href": "qmd/jiaxuan_whole.html#anemia-grade-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.1 Anemia Grade 2",
-    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec4_anemia_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec4_anemia_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#anemia-grade-3",
     "href": "qmd/jiaxuan_whole.html#anemia-grade-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.2 Anemia Grade 3",
-    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec4_anemia_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec4_anemia_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.3 Thrombocytopenia Grade 2",
-    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec4_throm_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec4_throm_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.4 Thrombocytopenia Grade 3",
-    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec4_throm_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec4_throm_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-grade-2",
     "href": "qmd/jiaxuan_whole.html#aki-grade-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.5 AKI Grade 2",
-    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_aki_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_aki_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-kdigo",
     "href": "qmd/jiaxuan_whole.html#aki-kdigo",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.6 AKI (KDIGO)",
-    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_aki_kdigo\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_aki_kdigo\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-2-aes",
     "href": "qmd/jiaxuan_whole.html#composite-grade-2-aes",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.7 Composite Grade 2 AEs",
-    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_grade_2_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_grade_2_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-3-aes",
     "href": "qmd/jiaxuan_whole.html#composite-grade-3-aes",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.8 Composite Grade 3 AEs",
-    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_grade_3_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_grade_3_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#overall-hospitalization",
     "href": "qmd/jiaxuan_whole.html#overall-hospitalization",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.9 Overall Hospitalization",
-    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_any_hosp\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_any_hosp\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#platinum-related-hospitalization",
     "href": "qmd/jiaxuan_whole.html#platinum-related-hospitalization",
     "title": "Sherley Project — Whole Cohort",
     "section": "4.10 Platinum-Related Hospitalization",
-    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_side_effect\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[9,9] = 0"
+    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec4_side_effect\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#day-death-cox-ph",
@@ -879,70 +879,70 @@
     "href": "qmd/jiaxuan_whole.html#anemia-grade-2-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.1 Anemia Grade 2",
-    "text": "6.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#anemia-grade-3-2",
     "href": "qmd/jiaxuan_whole.html#anemia-grade-3-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.2 Anemia Grade 3",
-    "text": "6.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2-2",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.3 Thrombocytopenia Grade 2",
-    "text": "6.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3-2",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.4 Thrombocytopenia Grade 3",
-    "text": "6.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-grade-2-2",
     "href": "qmd/jiaxuan_whole.html#aki-grade-2-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.5 AKI Grade 2",
-    "text": "6.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-kdigo-2",
     "href": "qmd/jiaxuan_whole.html#aki-kdigo-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.6 AKI (KDIGO)",
-    "text": "6.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO)\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO)\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-2-aes-2",
     "href": "qmd/jiaxuan_whole.html#composite-grade-2-aes-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.7 Composite Grade 2 AEs",
-    "text": "6.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-3-aes-2",
     "href": "qmd/jiaxuan_whole.html#composite-grade-3-aes-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.8 Composite Grade 3 AEs",
-    "text": "6.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#overall-hospitalization-2",
     "href": "qmd/jiaxuan_whole.html#overall-hospitalization-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.9 Overall Hospitalization",
-    "text": "6.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#platinum-related-hospitalization-2",
     "href": "qmd/jiaxuan_whole.html#platinum-related-hospitalization-2",
     "title": "Sherley Project — Whole Cohort",
     "section": "6.10 Platinum-Related Hospitalization",
-    "text": "6.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization\", \"ratio\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "6.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization\", \"ratio\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#day-death-cox-ph-2",
@@ -956,70 +956,70 @@
     "href": "qmd/jiaxuan_whole.html#anemia-grade-2-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.1 Anemia Grade 2",
-    "text": "7.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                       \"pre_HGB_45days\", \"Anemia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                       \"pre_HGB_45days\", \"Anemia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#anemia-grade-3-3",
     "href": "qmd/jiaxuan_whole.html#anemia-grade-3-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.2 Anemia Grade 3",
-    "text": "7.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                       \"pre_HGB_45days\", \"Anemia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                       \"pre_HGB_45days\", \"Anemia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2-3",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-2-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.3 Thrombocytopenia Grade 2",
-    "text": "7.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3-3",
     "href": "qmd/jiaxuan_whole.html#thrombocytopenia-grade-3-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.4 Thrombocytopenia Grade 3",
-    "text": "7.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-grade-2-3",
     "href": "qmd/jiaxuan_whole.html#aki-grade-2-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.5 AKI Grade 2",
-    "text": "7.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                       NULL, \"AKI Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                       NULL, \"AKI Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki-kdigo-3",
     "href": "qmd/jiaxuan_whole.html#aki-kdigo-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.6 AKI (KDIGO)",
-    "text": "7.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                       NULL, \"AKI (KDIGO)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                       NULL, \"AKI (KDIGO)\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-2-aes-3",
     "href": "qmd/jiaxuan_whole.html#composite-grade-2-aes-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.7 Composite Grade 2 AEs",
-    "text": "7.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                       NULL, \"Composite Grade 2 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                       NULL, \"Composite Grade 2 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#composite-grade-3-aes-3",
     "href": "qmd/jiaxuan_whole.html#composite-grade-3-aes-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.8 Composite Grade 3 AEs",
-    "text": "7.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                       NULL, \"Composite Grade 3 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                       NULL, \"Composite Grade 3 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#overall-hospitalization-3",
     "href": "qmd/jiaxuan_whole.html#overall-hospitalization-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.9 Overall Hospitalization",
-    "text": "7.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                       NULL, \"Overall Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                       NULL, \"Overall Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#platinum-related-hospitalization-3",
     "href": "qmd/jiaxuan_whole.html#platinum-related-hospitalization-3",
     "title": "Sherley Project — Whole Cohort",
     "section": "7.10 Platinum-Related Hospitalization",
-    "text": "7.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                       NULL, \"Platinum-Related Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "7.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_disc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                       NULL, \"Platinum-Related Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#day-death-cox-ph-3",
@@ -1033,70 +1033,70 @@
     "href": "qmd/jiaxuan_whole.html#nauseavomitinggi",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.1 Nausea/Vomiting/GI",
-    "text": "8.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#failure-to-thrivefatiguedehydration",
     "href": "qmd/jiaxuan_whole.html#failure-to-thrivefatiguedehydration",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.2 Failure to Thrive/Fatigue/Dehydration",
-    "text": "8.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#aki",
     "href": "qmd/jiaxuan_whole.html#aki",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.3 AKI",
-    "text": "8.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#electrolyte-abnormalities",
     "href": "qmd/jiaxuan_whole.html#electrolyte-abnormalities",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.4 Electrolyte Abnormalities",
-    "text": "8.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#cytopenia",
     "href": "qmd/jiaxuan_whole.html#cytopenia",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.5 Cytopenia",
-    "text": "8.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#febrile-neutropenia",
     "href": "qmd/jiaxuan_whole.html#febrile-neutropenia",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.6 Febrile Neutropenia",
-    "text": "8.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#infectionsepsis",
     "href": "qmd/jiaxuan_whole.html#infectionsepsis",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.7 Infection/Sepsis",
-    "text": "8.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#cancer-progression",
     "href": "qmd/jiaxuan_whole.html#cancer-progression",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.8 Cancer Progression",
-    "text": "8.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#immune-related-ae-other",
     "href": "qmd/jiaxuan_whole.html#immune-related-ae-other",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.9 Immune-related AE & Other",
-    "text": "8.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#planned-surgeryport",
     "href": "qmd/jiaxuan_whole.html#planned-surgeryport",
     "title": "Sherley Project — Whole Cohort",
     "section": "8.10 Planned Surgery/Port",
-    "text": "8.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "8.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port\")"
   },
   {
     "objectID": "qmd/jiaxuan_whole.html#egfr-discrepancy-vs-ckd-epi-cr-cys-unindexed",
@@ -1579,7 +1579,7 @@
     "href": "qmd/jiaxuan_carbo.html",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "",
-    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables (placed under docs/ so the\n# rendered website can serve them from ../tables/carbo/&lt;name&gt;.docx).\ndocx_dir &lt;- \"docs/tables/carbo\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Load whole-cohort data, then keep only carboplatin patients\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\") %&gt;%\n  filter(platin_group == \"Carboplatin\")\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Capped versions (for dose discrepancy calculations)\n    cockcroft_cap125 = pmin(cockcroft, 125),\n    # ckd_epi_gfr_cre_cys_unindex_cap125 already exists in data\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    # Dose discrepancy uses CAPPED eGFR (already computed in jiaxuan_data.qmd)\n    dose_discrep_per25increase = dose_discrepancy / 25,\n    abs_dose_discrep = abs(dose_discrepancy),\n    abs_dose_discrep_cat = cut(abs_dose_discrep,\n      breaks = c(0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;25\", \"25-49.99\", \"50-74.99\", \"75-99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    # Binary exposure for adjusted CIF curves (Section 14): 1 if patient was\n    # over-dosed by 25 mg or more (actual - predicted &gt;= 25), else 0.\n    dose_discrep_ge25 = as.integer(dose_discrepancy &gt;= 25),\n    # Signed dose discrepancy = actual - predicted; 10 bins symmetric around 0.\n    signed_dose_discrep_cat = cut(dose_discrepancy,\n      breaks = c(-Inf, -100, -75, -50, -25, 0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;=-100\", \"-99.99 to -75\", \"-74.99 to -50\",\n                 \"-49.99 to -25\", \"-24.99 to 0\",\n                 \"0 to 24.99\", \"25 to 49.99\", \"50 to 74.99\",\n                 \"75 to 99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )\n\ncat(\"Carboplatin cohort N =\", nrow(dat), \"\\n\")\n\n\nCarboplatin cohort N = 121"
+    "text": "Code\n# Force UTF-8 locale so kable captions and other strings render real Unicode\n# (e.g. em-dash) instead of &lt;U+2014&gt; escape sequences.\ninvisible(Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\"))\nlibrary(tidyverse)\nlibrary(scales)\nlibrary(ggplot2)\nlibrary(tidycmprsk)\nlibrary(ggsurvfit)\nlibrary(gtsummary)\nlibrary(flextable)\n\n# Output directory for downloadable Word tables (placed under docs/ so the\n# rendered website can serve them from ../tables/carbo/&lt;name&gt;.docx).\ndocx_dir &lt;- \"docs/tables/carbo\"\ndir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)\n\nsave_tbl_docx &lt;- function(tbl, docx_name) {\n  ft &lt;- gtsummary::as_flex_table(tbl)\n  flextable::save_as_docx(ft, path = file.path(docx_dir,\n                                               paste0(docx_name, \".docx\")))\n  invisible(tbl)\n}\n\n# Fallback renderers for when a model fit fails (singular design matrix etc.)\n# on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,\n# csh_model, cox_model, and the plot_* helpers.\n.plot_failed &lt;- function(label = \"Model could not be fit\") {\n  ggplot() +\n    annotate(\"text\", x = 0.5, y = 0.5,\n             label = paste0(label, \"\\n(singular design — cohort too small)\"),\n             size = 3.5) +\n    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +\n    theme_void()\n}\n.tbl_failed &lt;- function() {\n  knitr::asis_output(\n    \"&gt; *Model could not be fit — design matrix is singular for this sub-cohort.*\"\n  )\n}\n\n# Load whole-cohort data, then keep only carboplatin patients\ndat &lt;- readRDS(\"jiaxuan_final_master.rds\") %&gt;%\n  filter(platin_group == \"Carboplatin\")\n\n# Create eGFR ratio: CKD-EPI Cr-Cys (unindexed) / Cockcroft-Gault\n# Also create per-10 mL/min rescaled versions of cockcroft and CKD-EPI for\n# reporting (HRs per 1 mL/min are clinically uninterpretable; convention in\n# nephro-onc is per 10 mL/min — bio_agent confirmed). Adjusters keep raw scale.\ndat &lt;- dat %&gt;%\n  mutate(\n    # Capped versions (for dose discrepancy calculations)\n    cockcroft_cap125 = pmin(cockcroft, 125),\n    # ckd_epi_gfr_cre_cys_unindex_cap125 already exists in data\n    # Ratio uses UNCAPPED eGFR\n    egfr_ratio    = ckd_epi_gfr_cre_cys_unindex / cockcroft,\n    egfr_ratio_per10 = -egfr_ratio * 10,  # per 0.1-unit *decrease* reporting scale\n    egfr_discrepancy = ckd_epi_gfr_cre_cys_unindex - cockcroft,\n    # Dose discrepancy uses CAPPED eGFR (already computed in jiaxuan_data.qmd)\n    dose_discrep_per25increase = dose_discrepancy / 25,\n    abs_dose_discrep = abs(dose_discrepancy),\n    abs_dose_discrep_cat = cut(abs_dose_discrep,\n      breaks = c(0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;25\", \"25-49.99\", \"50-74.99\", \"75-99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    # Binary exposure for adjusted CIF curves (Section 14): 1 if patient was\n    # over-dosed by 25 mg or more (actual - predicted &gt;= 25), else 0.\n    dose_discrep_ge25 = as.integer(dose_discrepancy &gt;= 25),\n    # Signed dose discrepancy = actual - predicted; 10 bins symmetric around 0.\n    signed_dose_discrep_cat = cut(dose_discrepancy,\n      breaks = c(-Inf, -100, -75, -50, -25, 0, 25, 50, 75, 100, Inf),\n      labels = c(\"&lt;=-100\", \"-99.99 to -75\", \"-74.99 to -50\",\n                 \"-49.99 to -25\", \"-24.99 to 0\",\n                 \"0 to 24.99\", \"25 to 49.99\", \"50 to 74.99\",\n                 \"75 to 99.99\", \"&gt;=100\"),\n      right = FALSE, include.lowest = TRUE),\n    cockcroft_per10 = cockcroft / 10,\n    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10\n  )\n\ncat(\"Carboplatin cohort N =\", nrow(dat), \"\\n\")\n\n\nCarboplatin cohort N = 121"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#actual-vs-predicted-dose",
@@ -1600,70 +1600,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.1 Anemia Grade 2",
-    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.2 Anemia Grade 3",
-    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"egfr_ratio_per10\", \"pre_HGB_45days\", \"cockcroft\", docx_name = \"sec5_anemia_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.3 Thrombocytopenia Grade 2",
-    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.4 Thrombocytopenia Grade 3",
-    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"egfr_ratio_per10\", \"pre_PLT_45days\", \"cockcroft\", docx_name = \"sec5_throm_3\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.5 AKI Grade 2",
-    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_2\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.6 AKI (KDIGO)",
-    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_kdigo\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_aki_kdigo\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.7 Composite Grade 2 AEs",
-    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_2_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_2_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.8 Composite Grade 3 AEs",
-    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_3_aes\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_grade_3_aes\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.9 Overall Hospitalization",
-    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_any_hosp\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_any_hosp\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "4.10 Platinum-Related Hospitalization",
-    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_side_effect\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"egfr_ratio_per10\", egfr_adj = \"cockcroft\", docx_name = \"sec5_side_effect\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph",
@@ -1754,70 +1754,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.1 Anemia Grade 2",
-    "text": "7.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.1 Anemia Grade 2\n\n\nCode\nfg_model(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3-2",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.2 Anemia Grade 3",
-    "text": "7.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.2 Anemia Grade 3\n\n\nCode\nfg_model(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\", \"dose_discrep_per25increase\", \"pre_HGB_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-2",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.3 Thrombocytopenia Grade 2",
-    "text": "7.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.3 Thrombocytopenia Grade 2\n\n\nCode\nfg_model(\"cmp_time_throm_2\", \"cmp_status_throm_2\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-2",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.4 Thrombocytopenia Grade 3",
-    "text": "7.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.4 Thrombocytopenia Grade 3\n\n\nCode\nfg_model(\"cmp_time_throm_3\", \"cmp_status_throm_3\", \"dose_discrep_per25increase\", \"pre_PLT_45days\", \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2-2",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.5 AKI Grade 2",
-    "text": "7.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.5 AKI Grade 2\n\n\nCode\nfg_model(\"cmp_time_aki_2\", \"cmp_status_aki_2\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo-2",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.6 AKI (KDIGO)",
-    "text": "7.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.6 AKI (KDIGO)\n\n\nCode\nfg_model(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-2",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.7 Composite Grade 2 AEs",
-    "text": "7.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.7 Composite Grade 2 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-2",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.8 Composite Grade 3 AEs",
-    "text": "7.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.8 Composite Grade 3 AEs\n\n\nCode\nfg_model(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization-2",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.9 Overall Hospitalization",
-    "text": "7.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.9 Overall Hospitalization\n\n\nCode\nfg_model(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-2",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-2",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "7.10 Platinum-Related Hospitalization",
-    "text": "7.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[8,8] = 0"
+    "text": "7.10 Platinum-Related Hospitalization\n\n\nCode\nfg_model(\"cmp_time_side_effect\", \"cmp_status_side_effect\", \"dose_discrep_per25increase\", egfr_adj = \"cockcroft\")\n\n\n\nModel could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort)."
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph-2",
@@ -1908,70 +1908,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.1 Anemia Grade 2",
-    "text": "9.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                        \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3-4",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.2 Anemia Grade 3",
-    "text": "9.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                        \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-4",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.3 Thrombocytopenia Grade 2",
-    "text": "9.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-4",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.4 Thrombocytopenia Grade 3",
-    "text": "9.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2-4",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.5 AKI Grade 2",
-    "text": "9.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                        NULL, \"AKI Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo-4",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.6 AKI (KDIGO)",
-    "text": "9.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO) (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                        NULL, \"AKI (KDIGO) (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-4",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.7 Composite Grade 2 AEs",
-    "text": "9.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                        NULL, \"Composite Grade 2 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-4",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.8 Composite Grade 3 AEs",
-    "text": "9.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                        NULL, \"Composite Grade 3 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization-4",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.9 Overall Hospitalization",
-    "text": "9.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                        NULL, \"Overall Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-4",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-4",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "9.10 Platinum-Related Hospitalization",
-    "text": "9.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "9.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                        NULL, \"Platinum-Related Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph-4",
@@ -1985,70 +1985,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.1 Anemia Grade 2",
-    "text": "10.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                           \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                           \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3-5",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.2 Anemia Grade 3",
-    "text": "10.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                           \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                           \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-5",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.3 Thrombocytopenia Grade 2",
-    "text": "10.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-5",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.4 Thrombocytopenia Grade 3",
-    "text": "10.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                           \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2-5",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.5 AKI Grade 2",
-    "text": "10.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                           NULL, \"AKI Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                           NULL, \"AKI Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo-5",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.6 AKI (KDIGO)",
-    "text": "10.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                           NULL, \"AKI (KDIGO) (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                           NULL, \"AKI (KDIGO) (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-5",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.7 Composite Grade 2 AEs",
-    "text": "10.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                           NULL, \"Composite Grade 2 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                           NULL, \"Composite Grade 2 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-5",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.8 Composite Grade 3 AEs",
-    "text": "10.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                           NULL, \"Composite Grade 3 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                           NULL, \"Composite Grade 3 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization-5",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.9 Overall Hospitalization",
-    "text": "10.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                           NULL, \"Overall Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                           NULL, \"Overall Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-5",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-5",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "10.10 Platinum-Related Hospitalization",
-    "text": "10.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                           NULL, \"Platinum-Related Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "10.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_egfrdisc(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                           NULL, \"Platinum-Related Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph-5",
@@ -2062,70 +2062,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.1 Anemia Grade 2",
-    "text": "11.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                  \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                  \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3-6",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.2 Anemia Grade 3",
-    "text": "11.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                  \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                  \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-6",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.3 Thrombocytopenia Grade 2",
-    "text": "11.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-6",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.4 Thrombocytopenia Grade 3",
-    "text": "11.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                  \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2-6",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.5 AKI Grade 2",
-    "text": "11.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                  NULL, \"AKI Grade 2 (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                  NULL, \"AKI Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo-6",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.6 AKI (KDIGO)",
-    "text": "11.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                  NULL, \"AKI (KDIGO) (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                  NULL, \"AKI (KDIGO) (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-6",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.7 Composite Grade 2 AEs",
-    "text": "11.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                  NULL, \"Composite Grade 2 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                  NULL, \"Composite Grade 2 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-6",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.8 Composite Grade 3 AEs",
-    "text": "11.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                  NULL, \"Composite Grade 3 AEs (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                  NULL, \"Composite Grade 3 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization-6",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.9 Overall Hospitalization",
-    "text": "11.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                  NULL, \"Overall Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                  NULL, \"Overall Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-6",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-6",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "11.10 Platinum-Related Hospitalization",
-    "text": "11.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                  NULL, \"Platinum-Related Hospitalization (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "11.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                  NULL, \"Platinum-Related Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph-6",
@@ -2139,70 +2139,70 @@
     "href": "qmd/jiaxuan_carbo.html#nauseavomitinggi",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.1 Nausea/Vomiting/GI",
-    "text": "13.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.1 Nausea/Vomiting/GI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_1\", \"cmp_status_hosp_1\",\n                        NULL, \"Nausea/Vomiting/GI (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#failure-to-thrivefatiguedehydration",
     "href": "qmd/jiaxuan_carbo.html#failure-to-thrivefatiguedehydration",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.2 Failure to Thrive/Fatigue/Dehydration",
-    "text": "13.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.2 Failure to Thrive/Fatigue/Dehydration\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_2\", \"cmp_status_hosp_2\",\n                        NULL, \"Failure to Thrive/Fatigue/Dehydration (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki",
     "href": "qmd/jiaxuan_carbo.html#aki",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.3 AKI",
-    "text": "13.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.3 AKI\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_3\", \"cmp_status_hosp_3\",\n                        NULL, \"AKI (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#electrolyte-abnormalities",
     "href": "qmd/jiaxuan_carbo.html#electrolyte-abnormalities",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.4 Electrolyte Abnormalities",
-    "text": "13.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.4 Electrolyte Abnormalities\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_4\", \"cmp_status_hosp_4\",\n                        NULL, \"Electrolyte Abnormalities (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#cytopenia",
     "href": "qmd/jiaxuan_carbo.html#cytopenia",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.5 Cytopenia",
-    "text": "13.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.5 Cytopenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_5\", \"cmp_status_hosp_5\",\n                        NULL, \"Cytopenia (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#febrile-neutropenia",
     "href": "qmd/jiaxuan_carbo.html#febrile-neutropenia",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.6 Febrile Neutropenia",
-    "text": "13.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.6 Febrile Neutropenia\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_6\", \"cmp_status_hosp_6\",\n                        NULL, \"Febrile Neutropenia (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#infectionsepsis",
     "href": "qmd/jiaxuan_carbo.html#infectionsepsis",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.7 Infection/Sepsis",
-    "text": "13.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.7 Infection/Sepsis\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_7\", \"cmp_status_hosp_7\",\n                        NULL, \"Infection/Sepsis (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#cancer-progression",
     "href": "qmd/jiaxuan_carbo.html#cancer-progression",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.8 Cancer Progression",
-    "text": "13.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.8 Cancer Progression\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_8\", \"cmp_status_hosp_8\",\n                        NULL, \"Cancer Progression (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#immune-related-ae-other",
     "href": "qmd/jiaxuan_carbo.html#immune-related-ae-other",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.9 Immune-related AE & Other",
-    "text": "13.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.9 Immune-related AE & Other\nComposite competing-risk outcome combining hospitalisations coded as Immune-related AE (reason 9) and Other (reason 11). Event = 1 if either occurred within 90 days; time = earliest of the two.\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_immune_other\",\n                        \"cmp_status_hosp_immune_other\",\n                        NULL, \"Immune-related AE & Other (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#planned-surgeryport",
     "href": "qmd/jiaxuan_carbo.html#planned-surgeryport",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.10 Planned Surgery/Port",
-    "text": "13.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port (Carboplatin)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[7,7] = 0"
+    "text": "13.10 Planned Surgery/Port\n\n\nCode\nplot_subhr_linear_ratio(\"cmp_time_hosp_10\", \"cmp_status_hosp_10\",\n                        NULL, \"Planned Surgery/Port (Carboplatin)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#dose-discrepancy-vs-ckd-epi-cr-cys-unindexed",
@@ -2223,70 +2223,70 @@
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-2-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.1 Anemia Grade 2",
-    "text": "14.1 Anemia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n        \"pre_HGB_45days\", \"Anemia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.1 Anemia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n        \"pre_HGB_45days\", \"Anemia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#anemia-grade-3-7",
     "href": "qmd/jiaxuan_carbo.html#anemia-grade-3-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.2 Anemia Grade 3",
-    "text": "14.2 Anemia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n        \"pre_HGB_45days\", \"Anemia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.2 Anemia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n        \"pre_HGB_45days\", \"Anemia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-7",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-2-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.3 Thrombocytopenia Grade 2",
-    "text": "14.3 Thrombocytopenia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.3 Thrombocytopenia Grade 2\n\n\nCode\nadj_cif(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-7",
     "href": "qmd/jiaxuan_carbo.html#thrombocytopenia-grade-3-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.4 Thrombocytopenia Grade 3",
-    "text": "14.4 Thrombocytopenia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.4 Thrombocytopenia Grade 3\n\n\nCode\nadj_cif(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n        \"pre_PLT_45days\", \"Thrombocytopenia Grade 3\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-grade-2-7",
     "href": "qmd/jiaxuan_carbo.html#aki-grade-2-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.5 AKI Grade 2",
-    "text": "14.5 AKI Grade 2\n\n\nCode\nadj_cif(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n        NULL, \"AKI Grade 2\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.5 AKI Grade 2\n\n\nCode\nadj_cif(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n        NULL, \"AKI Grade 2\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#aki-kdigo-7",
     "href": "qmd/jiaxuan_carbo.html#aki-kdigo-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.6 AKI (KDIGO)",
-    "text": "14.6 AKI (KDIGO)\n\n\nCode\nadj_cif(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n        NULL, \"AKI (KDIGO)\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.6 AKI (KDIGO)\n\n\nCode\nadj_cif(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n        NULL, \"AKI (KDIGO)\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-7",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-2-aes-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.7 Composite Grade 2 AEs",
-    "text": "14.7 Composite Grade 2 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n        NULL, \"Composite Grade 2 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.7 Composite Grade 2 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n        NULL, \"Composite Grade 2 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-7",
     "href": "qmd/jiaxuan_carbo.html#composite-grade-3-aes-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.8 Composite Grade 3 AEs",
-    "text": "14.8 Composite Grade 3 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n        NULL, \"Composite Grade 3 AEs\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.8 Composite Grade 3 AEs\n\n\nCode\nadj_cif(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n        NULL, \"Composite Grade 3 AEs\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#overall-hospitalization-7",
     "href": "qmd/jiaxuan_carbo.html#overall-hospitalization-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.9 Overall Hospitalization",
-    "text": "14.9 Overall Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n        NULL, \"Overall Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.9 Overall Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n        NULL, \"Overall Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-7",
     "href": "qmd/jiaxuan_carbo.html#platinum-related-hospitalization-7",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "14.10 Platinum-Related Hospitalization",
-    "text": "14.10 Platinum-Related Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n        NULL, \"Platinum-Related Hospitalization\")\n\n\nError in `solve.default()`:\n! Lapack routine dgesv: system is exactly singular: U[6,6] = 0"
+    "text": "14.10 Platinum-Related Hospitalization\n\n\nCode\nadj_cif(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n        NULL, \"Platinum-Related Hospitalization\")"
   },
   {
     "objectID": "qmd/jiaxuan_carbo.html#day-death-cox-ph-7",

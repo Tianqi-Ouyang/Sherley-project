@@ -35,6 +35,23 @@ save_tbl_docx <- function(tbl, docx_name) {
   invisible(tbl)
 }
 
+# Fallback renderers for when a model fit fails (singular design matrix etc.)
+# on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,
+# csh_model, cox_model, and the plot_* helpers.
+.plot_failed <- function(label = "Model could not be fit") {
+  ggplot() +
+    annotate("text", x = 0.5, y = 0.5,
+             label = paste0(label, "\n(singular design — cohort too small)"),
+             size = 3.5) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+    theme_void()
+}
+.tbl_failed <- function() {
+  knitr::asis_output(
+    "> *Model could not be fit — design matrix is singular for this sub-cohort.*"
+  )
+}
+
 # Load whole-cohort data, then keep only carboplatin patients
 dat <- readRDS("jiaxuan_final_master.rds") %>%
   filter(platin_group == "Carboplatin")
@@ -222,28 +239,46 @@ fg_model <- function(time_var, status_var, pred_var, pre_labs = NULL,
     "Surv(", time_var, ", ", status_var, ") ~ ",
     paste(all_vars, collapse = " + ")
   ))
-  tbl_mv <- tidycmprsk::crr(fmla_mv, failcode = 1, data = dat) %>%
-    tbl_regression(exp = TRUE,
-                   pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
-    add_n()
+  tbl_mv <- tryCatch(
+    tidycmprsk::crr(fmla_mv, failcode = 1, data = dat) %>%
+      tbl_regression(exp = TRUE,
+                     pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+      add_n(),
+    error = function(e) NULL
+  )
 
   y_call <- str2lang(sprintf("Surv(%s, %s)", time_var, status_var))
-  tbl_uv <- rlang::inject(
-    tbl_uvregression(
-      data = dat,
-      method = tidycmprsk::crr,
-      y = !!y_call,
-      include = dplyr::all_of(all_vars),
-      exponentiate = TRUE,
-      pvalue_fun = function(x) style_pvalue(x, digits = 3),
-      method.args = list(failcode = 1)
-    )
+  tbl_uv <- tryCatch(
+    rlang::inject(
+      tbl_uvregression(
+        data = dat,
+        method = tidycmprsk::crr,
+        y = !!y_call,
+        include = dplyr::all_of(all_vars),
+        exponentiate = TRUE,
+        pvalue_fun = function(x) style_pvalue(x, digits = 3),
+        method.args = list(failcode = 1)
+      )
+    ),
+    error = function(e) NULL
   )
 
-  out <- tbl_merge(
-    tbls = list(tbl_uv, tbl_mv),
-    tab_spanner = c("**Univariable**", "**Multivariable**")
-  )
+  if (is.null(tbl_uv) && is.null(tbl_mv)) {
+    return(knitr::asis_output(
+      "> *Model could not be fit — Fine-Gray design matrix is singular (insufficient events or collinear covariates for this sub-cohort).*"
+    ))
+  }
+
+  out <- if (is.null(tbl_mv)) {
+    tbl_uv
+  } else if (is.null(tbl_uv)) {
+    tbl_mv
+  } else {
+    tbl_merge(
+      tbls = list(tbl_uv, tbl_mv),
+      tab_spanner = c("**Univariable**", "**Multivariable**")
+    )
+  }
 
   if (!is.null(docx_name)) save_tbl_docx(out, docx_name)
   out
@@ -380,10 +415,13 @@ csh_model <- function(time_var, status_var, pred_var, pre_labs = NULL) {
     "Surv(", time_var, ", csh_status) ~ ",
     paste(c(pred_var, adj), collapse = " + ")
   ))
-  survival::coxph(fmla, data = d) %>%
-    tbl_regression(exp = TRUE,
-                   pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
-    add_n()
+  tryCatch(
+    survival::coxph(fmla, data = d) %>%
+      tbl_regression(exp = TRUE,
+                     pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+      add_n(),
+    error = function(e) .tbl_failed()
+  )
 }
 ```
 
@@ -652,8 +690,12 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
   stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
   time_num <- as.numeric(d[[time_var]])
 
-  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
-                     cov1 = X, failcode = 1)
+  fit <- tryCatch(
+    cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                cov1 = X, failcode = 1),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
@@ -698,7 +740,8 @@ plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
     "Surv(", time_var, ", ", status_var, ") ~ egfr_ratio + ",
     paste(c(base_adj, extra_adj), collapse = " + ")
   ))
-  fit <- survival::coxph(fmla, data = d)
+  fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- coef(fit)["egfr_ratio"]
   V_beta <- vcov(fit)["egfr_ratio", "egfr_ratio"]
@@ -861,8 +904,12 @@ plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
   stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
   time_num <- as.numeric(d[[time_var]])
 
-  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
-                     cov1 = X, failcode = 1)
+  fit <- tryCatch(
+    cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                cov1 = X, failcode = 1),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
@@ -921,7 +968,8 @@ plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
     "Surv(", time_var, ", ", status_var, ") ~ egfr_discrepancy + ",
     paste(c(base_adj, extra_adj), collapse = " + ")
   ))
-  fit <- survival::coxph(fmla, data = d)
+  fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- coef(fit)["egfr_discrepancy"]
   V_beta <- vcov(fit)["egfr_discrepancy", "egfr_discrepancy"]
@@ -1098,8 +1146,12 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
   stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
   time_num <- as.numeric(d[[time_var]])
 
-  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
-                     cov1 = X, failcode = 1)
+  fit <- tryCatch(
+    cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                cov1 = X, failcode = 1),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
@@ -1144,7 +1196,8 @@ plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
     "Surv(", time_var, ", ", status_var, ") ~ dose_discrepancy + ",
     paste(c(base_adj, extra_adj), collapse = " + ")
   ))
-  fit <- survival::coxph(fmla, data = d)
+  fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
+  if (is.null(fit)) return(.plot_failed(outcome_label))
 
   beta   <- coef(fit)["dose_discrepancy"]
   V_beta <- vcov(fit)["dose_discrepancy", "dose_discrepancy"]
@@ -1452,8 +1505,12 @@ adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
   stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
   time_num <- as.numeric(d[[time_var]])
 
-  fit <- cmprsk::crr(ftime = time_num, fstatus = stat_num,
-                     cov1 = X_full, failcode = 1)
+  fit <- tryCatch(
+    cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                cov1 = X_full, failcode = 1),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(.plot_failed(label))
 
   # subHR (95% CI) for the binary exposure, extracted from the same FG fit
   # dose_discrep_ge25 is the first column of cov1 (entered first in the formula)
@@ -1515,7 +1572,8 @@ adj_death_curve <- function(time_var = "time_to_death_90",
   rhs <- paste(c("dose_discrep_ge25", base_adj), collapse = " + ")
   fmla <- as.formula(sprintf("survival::Surv(%s, %s) ~ %s",
                              time_var, status_var, rhs))
-  fit <- survival::coxph(fmla, data = d)
+  fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
+  if (is.null(fit)) return(.plot_failed(label))
 
   beta_e <- unname(coef(fit)["dose_discrep_ge25"])
   se_e   <- sqrt(vcov(fit)["dose_discrep_ge25", "dose_discrep_ge25"])
