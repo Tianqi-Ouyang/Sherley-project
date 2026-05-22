@@ -5,6 +5,8 @@ project:
     - index.qmd
     - qmd/sherley_data.qmd
     - qmd/sherley_carbo.qmd
+  post-render:
+    - python3 scripts/inject_pptx_links.py
 
 website:
   title: "Sherley Cohort — CysC / Creatinine Ratio – Platinum AE"

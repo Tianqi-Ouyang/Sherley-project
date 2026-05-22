@@ -87,6 +87,15 @@ knitr::opts_chunk$set(fig.process = function(file_path) {
   file_path
 })
 
+# Per-plot download links are injected after render by the post-render
+# script scripts/inject_pptx_links.py (configured in _quarto.yml). It
+# scans each rendered HTML page, finds every figure-html <img> whose
+# basename matches a .pptx slug in docs/plots/carbo/, and inserts a
+# small "📥 Download editable PowerPoint" link beneath the figure.
+# (We tried doing this inside R via knitr hooks, but Quarto's HTML
+# pipeline bypasses both the plot and chunk hooks, so a post-render
+# pass on the HTML is the reliable path.)
+
 # Fallback renderers for when a model fit fails (singular design matrix etc.)
 # on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,
 # csh_model, cox_model, and the plot_* helpers. Saves a placeholder pptx so
