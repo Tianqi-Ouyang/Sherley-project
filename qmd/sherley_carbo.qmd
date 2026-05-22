@@ -22,11 +22,19 @@ library(tidycmprsk)
 library(ggsurvfit)
 library(gtsummary)
 library(flextable)
+library(officer)
+library(rvg)
 
 # Output directory for downloadable Word tables (placed under docs/ so the
 # rendered website can serve them from ../tables/carbo/<name>.docx).
 docx_dir <- "docs/tables/carbo"
 dir.create(docx_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Output directory for downloadable PowerPoint plots (../plots/carbo/<name>.pptx).
+# Use absolute path so fig.process hook (which may run from a different
+# working directory than the chunks themselves) still resolves correctly.
+pptx_dir <- normalizePath("docs/plots/carbo", winslash = "/", mustWork = FALSE)
+dir.create(pptx_dir, recursive = TRUE, showWarnings = FALSE)
 
 save_tbl_docx <- function(tbl, docx_name) {
   ft <- gtsummary::as_flex_table(tbl)
@@ -35,16 +43,64 @@ save_tbl_docx <- function(tbl, docx_name) {
   invisible(tbl)
 }
 
+# Save the given ggplot as an editable PowerPoint slide via rvg::dml.
+# The chunk label (from knitr::opts_current) is used as the filename so each
+# chunk produces a uniquely-named pptx in docs/plots/carbo/. Returns NULL on
+# failure (officer/rvg missing, ggplot invalid, etc.). Plot helpers below
+# call this directly; for inline ggplot chunks the fig.process hook below
+# also runs it on ggplot2::last_plot() as a safety net.
+.save_plot_pptx <- function(p, name = NULL) {
+  if (is.null(p) || !inherits(p, "ggplot")) return(invisible(NULL))
+  if (is.null(name)) {
+    name <- tryCatch(knitr::opts_current$get("label"), error = function(e) NULL)
+  }
+  if (is.null(name)) return(invisible(NULL))
+  safe <- gsub("[^A-Za-z0-9]+", "_", name)
+  out  <- file.path(pptx_dir, paste0(safe, ".pptx"))
+  ok <- tryCatch({
+    pp <- officer::read_pptx()
+    pp <- officer::add_slide(pp, layout = "Title and Content", master = "Office Theme")
+    pp <- officer::ph_with(
+      pp,
+      value = rvg::dml(ggobj = p),
+      location = officer::ph_location_type(type = "body")
+    )
+    print(pp, target = out)
+    TRUE
+  }, error = function(e) FALSE)
+  invisible(if (ok) paste0("../plots/carbo/", safe, ".pptx") else NULL)
+}
+
+# Safety-net fig.process hook: after each chunk's figure is saved as PNG,
+# also save ggplot2::last_plot() as .pptx. Plot helpers also call
+# .save_plot_pptx directly inside their bodies; this hook covers inline-
+# ggplot chunks (eGFR histogram, dose-distribution, etc.) that don't go
+# through a helper. Safe to double-save — same chunk label, same target file.
+knitr::opts_chunk$set(fig.process = function(file_path) {
+  lbl <- tryCatch(knitr::opts_current$get("label"), error = function(e) NULL)
+  if (!is.null(lbl)) {
+    p <- tryCatch(ggplot2::last_plot(), error = function(e) NULL)
+    if (!is.null(p) && inherits(p, "ggplot")) {
+      .save_plot_pptx(p, lbl)
+    }
+  }
+  file_path
+})
+
 # Fallback renderers for when a model fit fails (singular design matrix etc.)
 # on the small Sherley sub-cohort. Used by tryCatch wrappers in fg_model,
-# csh_model, cox_model, and the plot_* helpers.
+# csh_model, cox_model, and the plot_* helpers. Saves a placeholder pptx so
+# the download index still lists the figure (so reviewers know which model
+# could not be fit).
 .plot_failed <- function(label = "Model could not be fit") {
-  ggplot() +
+  p <- ggplot() +
     annotate("text", x = 0.5, y = 0.5,
              label = paste0(label, "\n(singular design — cohort too small)"),
              size = 3.5) +
     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_void()
+  .save_plot_pptx(p)
+  p
 }
 .tbl_failed <- function() {
   knitr::asis_output(
@@ -768,7 +824,9 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
          y = "subHR (95% CI)",
          title = outcome_label) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11)
+    theme_minimal(base_size = 11) -> p
+  .save_plot_pptx(p)
+  p
 }
 
 plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
@@ -811,7 +869,9 @@ plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
          y = "HR (95% CI)",
          title = outcome_label) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11)
+    theme_minimal(base_size = 11) -> p
+  .save_plot_pptx(p)
+  p
 }
 ```
 
@@ -990,7 +1050,9 @@ plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
     theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25"))
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+  .save_plot_pptx(p)
+  p
 }
 
 plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
@@ -1047,7 +1109,9 @@ plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
     theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25"))
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+  .save_plot_pptx(p)
+  p
 }
 ```
 
@@ -1212,7 +1276,9 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
          y = "subHR (95% CI)",
          title = outcome_label) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11)
+    theme_minimal(base_size = 11) -> p
+  .save_plot_pptx(p)
+  p
 }
 
 plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
@@ -1255,7 +1321,9 @@ plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
          y = "HR (95% CI)",
          title = outcome_label) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11)
+    theme_minimal(base_size = 11) -> p
+  .save_plot_pptx(p)
+  p
 }
 ```
 
@@ -1581,7 +1649,9 @@ adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
          subtitle = subtitle_str) +
     theme_minimal(base_size = 11) +
     theme(legend.position = "top",
-          plot.subtitle = element_text(size = 10, color = "grey25"))
+          plot.subtitle = element_text(size = 10, color = "grey25")) -> p
+  .save_plot_pptx(p)
+  p
 }
 
 adj_death_curve <- function(time_var = "time_to_death_90",
@@ -1641,7 +1711,9 @@ adj_death_curve <- function(time_var = "time_to_death_90",
          subtitle = subtitle_str) +
     theme_minimal(base_size = 11) +
     theme(legend.position = "top",
-          plot.subtitle = element_text(size = 10, color = "grey25"))
+          plot.subtitle = element_text(size = 10, color = "grey25")) -> p
+  .save_plot_pptx(p)
+  p
 }
 ```
 
@@ -1767,3 +1839,40 @@ pct_excess <- round(n_excess / n_with_dx * 100, 1)
 A total of `r n_excess` (`r pct_excess`%) patients received an excess dose of carboplatin, defined as ≥ 25 mg higher than the dose that would have been predicted using the CKD-EPI eGFR~CR-CYS~ equation adjusted for actual BSA.
 
 (Denominator: `r n_with_dx` carboplatin patients with a computable predicted dose.)
+
+# 16 Diagnostic — Local/Early Stage Patients (Record IDs)
+
+The carboplatin cohort contains a small number of patients with `tumor_stage` = **Local/Early**. Their record IDs are listed below — useful for QA / chart review.
+
+```{r}
+#| label: jx-carbo-local-early-ids
+local_early <- dat %>%
+  dplyr::filter(as.character(tumor_stage) %in% c("Local/Early", "1")) %>%
+  dplyr::select(record_id, EMPI, tumor_stage, cancer_type_cat_7, age, sex) %>%
+  dplyr::arrange(record_id)
+
+knitr::kable(
+  local_early,
+  align = c("r","r","l","l","r","l"),
+  caption = sprintf("Carboplatin cohort patients with tumor_stage = Local/Early (N = %d).",
+                    nrow(local_early))
+)
+```
+
+# 17 Downloadable PowerPoint Plots
+
+Every figure on this page is also saved as an editable **PowerPoint slide** (vector graphics — text and shapes remain editable in PowerPoint). Click any link below to download the .pptx for that figure.
+
+```{r}
+#| label: jx-carbo-pptx-index
+#| results: asis
+pptx_files <- list.files(pptx_dir, pattern = "\\.pptx$", full.names = FALSE)
+if (length(pptx_files) == 0) {
+  cat("*No PowerPoint files were produced during this render.*\n")
+} else {
+  for (f in sort(pptx_files)) {
+    label <- gsub("_", " ", tools::file_path_sans_ext(f))
+    cat(sprintf("- [📥 %s](../plots/carbo/%s)\n", label, f))
+  }
+}
+```
