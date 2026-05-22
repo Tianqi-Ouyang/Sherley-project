@@ -12,6 +12,8 @@ website:
     left:
       - href: index.qmd
         text: Summary
+      - href: qmd/sherley_data.qmd
+        text: Data Management
       - href: qmd/sherley_carbo.qmd
         text: Carboplatin Cohort
 
