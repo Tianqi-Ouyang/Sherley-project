@@ -23,7 +23,7 @@ quarto render
 ## Files
 
 - **`Data/Patient IDS_Tianqi_20May2026.xlsx`** — Sherley EMPI inclusion list (Sheet3, N=169).
-- **`Data/CystatinCInPatientsO_DATA_2026-04-27_0819.csv`** — REDCap export (reused from parent project).
+- **`Data/CystatinCInPatientsO_DATA_2026-05-26_1104.csv`** — REDCap export (reused from parent project).
 - RPDR diagnoses / labs / medications are loaded by absolute path from the Partners HealthCare Dropbox (see `qmd/sherley_data.qmd` lines 675/680/686).
 
 ### Sherley Project Files (in `qmd/`)
