@@ -269,7 +269,7 @@ ggplot(ratio_hist, aes(x = egfr_ratio)) +
 
 # Event Counts by Outcome (Diagnostic)
 
-For each outcome the table below shows the cohort N, events (status = 1 within 90 days), competing deaths (status = 2; not applicable to 90-day death which is modelled by Cox PH), censored, event rate, and events-per-variable (EPV) using the **5-variable base adjuster set** for this cohort (`age`, `sex`, `ecog_score` (ECOG performance status, numeric 0–5), `ici`, `cockcroft` (creatinine clearance)). Following the Jiaxuan-paper methodology, anemia models additionally adjust for `pre_HGB_45days` (baseline hemoglobin within 45 days) and thrombocytopenia models additionally adjust for `pre_PLT_45days` (baseline platelets within 45 days) — so those four outcomes carry 6 adjusters and their EPV column should be interpreted against ~6 rather than 5. As a rule of thumb, Fine-Gray fits need **≥ 5 × adj** events to be stable; **< 2 × adj** almost always produces a singular design matrix, which is why the helper functions in this file fall back to a "Model could not be fit" placeholder where you see one.
+For each outcome the table below shows the cohort N, events (status = 1 within 90 days), competing deaths (status = 2; not applicable to 90-day death which is modelled by Cox PH), censored, event rate, and events-per-variable (EPV) using the **5-variable base adjuster set** for this cohort (`age`, `sex`, `ecog_score` (ECOG performance status, numeric 0–5), `ici`, `cockcroft` (creatinine clearance)). Following the Jiaxuan-paper methodology, **anemia** models additionally adjust for `pre_HGB_45days` (baseline hemoglobin within 45 days), **thrombocytopenia** models additionally adjust for `pre_PLT_45days` (baseline platelets within 45 days), and the **composite Grade 2 / Grade 3 cytopenia** models (which combine anemia, thrombocytopenia, and AKI events) adjust for **both** `pre_HGB_45days` and `pre_PLT_45days` — so anemia / throm outcomes carry 6 adjusters and the composites carry 7. Read the EPV column against the per-outcome adjuster count, not the base 5. As a rule of thumb, Fine-Gray fits need **≥ 5 × adj** events to be stable; **< 2 × adj** almost always produces a singular design matrix, which is why the helper functions in this file fall back to a "Model could not be fit" placeholder where you see one.
 
 ```{r}
 #| label: jx-event-counts-carbo
@@ -489,14 +489,14 @@ fg_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "egfr_ratio_per10", egfr_
 
 ```{r}
 #| label: jx-carbo-fg-cg-grade2
-fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_grade_2_aes")
+fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10", pre_labs = c("pre_HGB_45days", "pre_PLT_45days"), egfr_adj = "cockcroft", docx_name = "sec5_grade_2_aes")
 ```
 
 ## 4.8 Composite Grade 3 AEs
 
 ```{r}
 #| label: jx-carbo-fg-cg-grade3
-fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10", egfr_adj = "cockcroft", docx_name = "sec5_grade_3_aes")
+fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10", pre_labs = c("pre_HGB_45days", "pre_PLT_45days"), egfr_adj = "cockcroft", docx_name = "sec5_grade_3_aes")
 ```
 
 ## 4.9 Overall Hospitalization
@@ -589,14 +589,14 @@ csh_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "egfr_ratio_per10")
 
 ```{r}
 #| label: jx-carbo-csh-grade2
-csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10")
+csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "egfr_ratio_per10", c("pre_HGB_45days", "pre_PLT_45days"))
 ```
 
 ## 5.8 Composite Grade 3 AEs
 
 ```{r}
 #| label: jx-carbo-csh-grade3
-csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10")
+csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "egfr_ratio_per10", c("pre_HGB_45days", "pre_PLT_45days"))
 ```
 
 ## 5.9 Overall Hospitalization
@@ -668,14 +668,14 @@ fg_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "dose_discrep_per25increa
 
 ```{r}
 #| label: jx-carbo-fg-dd-grade2
-fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+fg_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase", pre_labs = c("pre_HGB_45days", "pre_PLT_45days"), egfr_adj = "cockcroft")
 ```
 
 ## 7.8 Composite Grade 3 AEs
 
 ```{r}
 #| label: jx-carbo-fg-dd-grade3
-fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase", egfr_adj = "cockcroft")
+fg_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase", pre_labs = c("pre_HGB_45days", "pre_PLT_45days"), egfr_adj = "cockcroft")
 ```
 
 ## 7.9 Overall Hospitalization
@@ -747,14 +747,14 @@ csh_model("cmp_time_aki_kdigo", "cmp_status_aki_kdigo", "dose_discrep_per25incre
 
 ```{r}
 #| label: jx-carbo-csh-dd-grade2
-csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase")
+csh_model("cmp_time_grade_2_aes", "cmp_status_grade_2_aes", "dose_discrep_per25increase", c("pre_HGB_45days", "pre_PLT_45days"))
 ```
 
 ## 8.8 Composite Grade 3 AEs
 
 ```{r}
 #| label: jx-carbo-csh-dd-grade3
-csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase")
+csh_model("cmp_time_grade_3_aes", "cmp_status_grade_3_aes", "dose_discrep_per25increase", c("pre_HGB_45days", "pre_PLT_45days"))
 ```
 
 ## 8.9 Overall Hospitalization
@@ -957,7 +957,7 @@ plot_subhr_linear_ratio("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear_ratio("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
-                        NULL, "Composite Grade 2 AEs (Carboplatin)")
+                        c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 2 AEs (Carboplatin)")
 ```
 
 ## 9.8 Composite Grade 3 AEs
@@ -967,7 +967,7 @@ plot_subhr_linear_ratio("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear_ratio("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
-                        NULL, "Composite Grade 3 AEs (Carboplatin)")
+                        c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 3 AEs (Carboplatin)")
 ```
 
 ## 9.9 Overall Hospitalization
@@ -1197,7 +1197,7 @@ plot_subhr_linear_egfrdisc("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear_egfrdisc("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
-                           NULL, "Composite Grade 2 AEs (Carboplatin)")
+                           c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 2 AEs (Carboplatin)")
 ```
 
 ## 10.8 Composite Grade 3 AEs
@@ -1207,7 +1207,7 @@ plot_subhr_linear_egfrdisc("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear_egfrdisc("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
-                           NULL, "Composite Grade 3 AEs (Carboplatin)")
+                           c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 3 AEs (Carboplatin)")
 ```
 
 ## 10.9 Overall Hospitalization
@@ -1409,7 +1409,7 @@ plot_subhr_linear("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
-                  NULL, "Composite Grade 2 AEs (Carboplatin)")
+                  c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 2 AEs (Carboplatin)")
 ```
 
 ## 11.8 Composite Grade 3 AEs
@@ -1419,7 +1419,7 @@ plot_subhr_linear("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
 #| fig-width: 6
 #| fig-height: 4
 plot_subhr_linear("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
-                  NULL, "Composite Grade 3 AEs (Carboplatin)")
+                  c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 3 AEs (Carboplatin)")
 ```
 
 ## 11.9 Overall Hospitalization
@@ -1799,7 +1799,7 @@ adj_cif("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
 #| fig-width: 7
 #| fig-height: 4
 adj_cif("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
-        NULL, "Composite Grade 2 AEs")
+        c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 2 AEs")
 ```
 
 ## 14.8 Composite Grade 3 AEs
@@ -1809,7 +1809,7 @@ adj_cif("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
 #| fig-width: 7
 #| fig-height: 4
 adj_cif("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
-        NULL, "Composite Grade 3 AEs")
+        c("pre_HGB_45days", "pre_PLT_45days"), "Composite Grade 3 AEs")
 ```
 
 ## 14.9 Overall Hospitalization
