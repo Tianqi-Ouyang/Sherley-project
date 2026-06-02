@@ -71,6 +71,26 @@ save_tbl_docx <- function(tbl, docx_name) {
   invisible(if (ok) paste0("../plots/carbo/", safe, ".pptx") else NULL)
 }
 
+# Format a subtitle for the linear-HR plot helpers: report the exposure's
+# subHR (or HR) per `scale` units, with 95% CI and Wald p-value extracted
+# from the underlying Fine-Gray (cmprsk::crr) or Cox PH (survival::coxph)
+# fit. `scale` lets each helper report on a clinically meaningful unit:
+#   - egfr_ratio: 0.1   ("per 0.1-unit increase")
+#   - egfr_discrepancy: 10  ("per 10 mL/min increase")
+#   - dose_discrep_per25increase: 1  ("per 25 mg increase")
+.hr_subtitle <- function(beta, V_beta, scale = 1,
+                         hr_type = "subHR",
+                         unit_label = "per 1-unit increase") {
+  se   <- sqrt(V_beta)
+  hr   <- exp(beta * scale)
+  lcl  <- exp((beta - 1.96 * se) * scale)
+  ucl  <- exp((beta + 1.96 * se) * scale)
+  pval <- 2 * (1 - pnorm(abs(beta / se)))
+  p_str <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+  sprintf("%s = %.2f (95%% CI %.2f-%.2f), p = %s   (%s)",
+          hr_type, hr, lcl, ucl, p_str, unit_label)
+}
+
 # Safety-net fig.process hook: after each chunk's figure is saved as PNG,
 # also save ggplot2::last_plot() as .pptx. Plot helpers also call
 # .save_plot_pptx directly inside their bodies; this hook covers inline-
@@ -814,6 +834,9 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
+  subtitle_str <- .hr_subtitle(beta, V_beta, scale = 0.1,
+                               hr_type = "subHR",
+                               unit_label = "per 0.1-unit increase in eGFR ratio")
 
   ref_x  <- median(d$egfr_ratio, na.rm = TRUE)
   grid_x <- seq(quantile(d$egfr_ratio, 0.025, na.rm = TRUE),
@@ -837,9 +860,11 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
     geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
     labs(x = "CKD-EPI Cr-Cys / CG ratio",
          y = "subHR (95% CI)",
-         title = outcome_label) +
+         title = outcome_label,
+         subtitle = subtitle_str) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) -> p
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -859,6 +884,9 @@ plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
 
   beta   <- coef(fit)["egfr_ratio"]
   V_beta <- vcov(fit)["egfr_ratio", "egfr_ratio"]
+  subtitle_str <- .hr_subtitle(beta, V_beta, scale = 0.1,
+                               hr_type = "HR",
+                               unit_label = "per 0.1-unit increase in eGFR ratio (Cox PH)")
 
   ref_x  <- median(d$egfr_ratio, na.rm = TRUE)
   grid_x <- seq(quantile(d$egfr_ratio, 0.025, na.rm = TRUE),
@@ -882,9 +910,11 @@ plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
     geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
     labs(x = "CKD-EPI Cr-Cys / CG ratio",
          y = "HR (95% CI)",
-         title = outcome_label) +
+         title = outcome_label,
+         subtitle = subtitle_str) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) -> p
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1033,9 +1063,11 @@ plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
   iqr_w <- q3 - q1
   hr1   <- exp(beta);             hr1_l <- exp(beta - 1.96 * se_b);             hr1_u <- exp(beta + 1.96 * se_b)
   hri   <- exp(beta * iqr_w);     hri_l <- exp(beta * iqr_w - 1.96 * abs(iqr_w) * se_b); hri_u <- exp(beta * iqr_w + 1.96 * abs(iqr_w) * se_b)
+  pval  <- 2 * (1 - pnorm(abs(beta / se_b)))
+  p_str <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
   subtitle_str <- sprintf(
-    "subHR per 1 mL/min: %.2f (%.2f-%.2f)  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
-    hr1, hr1_l, hr1_u, iqr_w, hri, hri_l, hri_u, q1, q3)
+    "subHR per 1 mL/min: %.2f (%.2f-%.2f), p = %s  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
+    hr1, hr1_l, hr1_u, p_str, iqr_w, hri, hri_l, hri_u, q1, q3)
 
   ref_x  <- median(d$egfr_discrepancy, na.rm = TRUE)
   grid_x <- seq(quantile(d$egfr_discrepancy, 0.025, na.rm = TRUE),
@@ -1092,9 +1124,11 @@ plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
   iqr_w <- q3 - q1
   hr1   <- exp(beta);             hr1_l <- exp(beta - 1.96 * se_b);             hr1_u <- exp(beta + 1.96 * se_b)
   hri   <- exp(beta * iqr_w);     hri_l <- exp(beta * iqr_w - 1.96 * abs(iqr_w) * se_b); hri_u <- exp(beta * iqr_w + 1.96 * abs(iqr_w) * se_b)
+  pval  <- 2 * (1 - pnorm(abs(beta / se_b)))
+  p_str <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
   subtitle_str <- sprintf(
-    "HR per 1 mL/min: %.2f (%.2f-%.2f)  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
-    hr1, hr1_l, hr1_u, iqr_w, hri, hri_l, hri_u, q1, q3)
+    "HR per 1 mL/min: %.2f (%.2f-%.2f), p = %s  |  per IQR (Δ = %.1f): %.2f (%.2f-%.2f)  |  IQR: [%.1f, %.1f]",
+    hr1, hr1_l, hr1_u, p_str, iqr_w, hri, hri_l, hri_u, q1, q3)
 
   ref_x  <- median(d$egfr_discrepancy, na.rm = TRUE)
   grid_x <- seq(quantile(d$egfr_discrepancy, 0.025, na.rm = TRUE),
@@ -1266,6 +1300,9 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
+  subtitle_str <- .hr_subtitle(beta, V_beta, scale = 25,
+                               hr_type = "subHR",
+                               unit_label = "per 25 mg increase in dose discrepancy")
 
   ref_x  <- median(d$dose_discrepancy, na.rm = TRUE)
   grid_x <- seq(quantile(d$dose_discrepancy, 0.025, na.rm = TRUE),
@@ -1289,9 +1326,11 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
     geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
     labs(x = "Dose Discrepancy (mg)",
          y = "subHR (95% CI)",
-         title = outcome_label) +
+         title = outcome_label,
+         subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) -> p
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1311,6 +1350,9 @@ plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
 
   beta   <- coef(fit)["dose_discrepancy"]
   V_beta <- vcov(fit)["dose_discrepancy", "dose_discrepancy"]
+  subtitle_str <- .hr_subtitle(beta, V_beta, scale = 25,
+                               hr_type = "HR",
+                               unit_label = "per 25 mg increase in dose discrepancy (Cox PH)")
 
   ref_x  <- median(d$dose_discrepancy, na.rm = TRUE)
   grid_x <- seq(quantile(d$dose_discrepancy, 0.025, na.rm = TRUE),
@@ -1334,9 +1376,11 @@ plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
     geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
     labs(x = "Dose Discrepancy (mg)",
          y = "HR (95% CI)",
-         title = outcome_label) +
+         title = outcome_label,
+         subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) -> p
+    theme_minimal(base_size = 11) +
+    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
