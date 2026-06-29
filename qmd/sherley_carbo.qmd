@@ -263,7 +263,7 @@ dat %>%
     cockcroft, egfr_ratio
   ) %>%
   tbl_summary(
-    statistic = list(age ~ "{mean} ({sd})")
+    statistic = list(age ~ "{median} ({p25}, {p75})")
   )
 ```
 
@@ -863,8 +863,8 @@ plot_subhr_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -913,8 +913,8 @@ plot_cox_linear_ratio <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(xlim = c(0.65, 1.45), ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1096,8 +1096,8 @@ plot_subhr_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1157,8 +1157,8 @@ plot_cox_linear_egfrdisc <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1329,8 +1329,8 @@ plot_subhr_linear <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1379,8 +1379,8 @@ plot_cox_linear <- function(time_var, status_var, extra_adj = NULL,
          title = outcome_label,
          subtitle = subtitle_str) +
     coord_cartesian(ylim = c(0, 4)) +
-    theme_minimal(base_size = 11) +
-    theme(plot.subtitle = element_text(size = 9, color = "grey25")) -> p
+    theme_minimal(base_size = 14) +
+    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1616,7 +1616,7 @@ ggplot(dat %>% filter(!is.na(dose_discrepancy)),
   labs(x = "CKD-EPI Cr-Cys eGFR (unindexed, mL/min)",
        y = "Dose Discrepancy (mg)",
        title = "Dose Discrepancy vs CKD-EPI Cr-Cys eGFR (Carboplatin)") +
-  theme_minimal(base_size = 11)
+  theme_minimal(base_size = 14)
 ```
 
 ## 13.2 Dose Discrepancy vs Cockcroft-Gault
@@ -1632,7 +1632,7 @@ ggplot(dat %>% filter(!is.na(dose_discrepancy)),
   labs(x = "Cockcroft-Gault eGFR (mL/min)",
        y = "Dose Discrepancy (mg)",
        title = "Dose Discrepancy vs Cockcroft-Gault eGFR (Carboplatin)") +
-  theme_minimal(base_size = 11)
+  theme_minimal(base_size = 14)
 ```
 
 
@@ -1706,9 +1706,9 @@ adj_cif <- function(time_var, status_var, extra_pre = NULL, label) {
          color = NULL,
          title = label,
          subtitle = subtitle_str) +
-    theme_minimal(base_size = 11) +
+    theme_minimal(base_size = 14) +
     theme(legend.position = "top",
-          plot.subtitle = element_text(size = 10, color = "grey25")) -> p
+          plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
@@ -1768,9 +1768,9 @@ adj_death_curve <- function(time_var = "time_to_death_90",
          color = NULL,
          title = label,
          subtitle = subtitle_str) +
-    theme_minimal(base_size = 11) +
+    theme_minimal(base_size = 14) +
     theme(legend.position = "top",
-          plot.subtitle = element_text(size = 10, color = "grey25")) -> p
+          plot.subtitle = element_text(size = 12, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
