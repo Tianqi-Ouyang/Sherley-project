@@ -634,14 +634,14 @@
     "href": "qmd/sherley_carbo.html#dose-discrepancy-vs-ckd-epi-cr-cys-unindexed",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.1 Dose Discrepancy vs CKD-EPI Cr-Cys (unindexed)",
-    "text": "13.1 Dose Discrepancy vs CKD-EPI Cr-Cys (unindexed)\n\n\nCode\nggplot(dat %&gt;% filter(!is.na(dose_discrepancy)),\n       aes(x = ckd_epi_gfr_cre_cys_unindex, y = dose_discrepancy)) +\n  geom_point(alpha = 0.3) +\n  geom_smooth(method = \"lm\", se = TRUE, color = \"steelblue\") +\n  labs(x = \"CKD-EPI Cr-Cys eGFR (unindexed, mL/min)\",\n       y = \"Dose Discrepancy (mg)\",\n       title = \"Dose Discrepancy vs CKD-EPI Cr-Cys eGFR (Carboplatin)\") +\n  theme_minimal(base_size = 11)"
+    "text": "13.1 Dose Discrepancy vs CKD-EPI Cr-Cys (unindexed)\n\n\nCode\nggplot(dat %&gt;% filter(!is.na(dose_discrepancy)),\n       aes(x = ckd_epi_gfr_cre_cys_unindex, y = dose_discrepancy)) +\n  geom_point(alpha = 0.3) +\n  geom_smooth(method = \"lm\", se = TRUE, color = \"steelblue\") +\n  labs(x = \"CKD-EPI Cr-Cys eGFR (unindexed, mL/min)\",\n       y = \"Dose Discrepancy (mg)\",\n       title = \"Dose Discrepancy vs CKD-EPI Cr-Cys eGFR (Carboplatin)\") +\n  theme_minimal(base_size = 14)"
   },
   {
     "objectID": "qmd/sherley_carbo.html#dose-discrepancy-vs-cockcroft-gault",
     "href": "qmd/sherley_carbo.html#dose-discrepancy-vs-cockcroft-gault",
     "title": "Sherley Project — Carboplatin Cohort",
     "section": "13.2 Dose Discrepancy vs Cockcroft-Gault",
-    "text": "13.2 Dose Discrepancy vs Cockcroft-Gault\n\n\nCode\nggplot(dat %&gt;% filter(!is.na(dose_discrepancy)),\n       aes(x = cockcroft, y = dose_discrepancy)) +\n  geom_point(alpha = 0.3) +\n  geom_smooth(method = \"lm\", se = TRUE, color = \"steelblue\") +\n  labs(x = \"Cockcroft-Gault eGFR (mL/min)\",\n       y = \"Dose Discrepancy (mg)\",\n       title = \"Dose Discrepancy vs Cockcroft-Gault eGFR (Carboplatin)\") +\n  theme_minimal(base_size = 11)"
+    "text": "13.2 Dose Discrepancy vs Cockcroft-Gault\n\n\nCode\nggplot(dat %&gt;% filter(!is.na(dose_discrepancy)),\n       aes(x = cockcroft, y = dose_discrepancy)) +\n  geom_point(alpha = 0.3) +\n  geom_smooth(method = \"lm\", se = TRUE, color = \"steelblue\") +\n  labs(x = \"Cockcroft-Gault eGFR (mL/min)\",\n       y = \"Dose Discrepancy (mg)\",\n       title = \"Dose Discrepancy vs Cockcroft-Gault eGFR (Carboplatin)\") +\n  theme_minimal(base_size = 14)"
   },
   {
     "objectID": "qmd/sherley_carbo.html#anemia-grade-2-7",
