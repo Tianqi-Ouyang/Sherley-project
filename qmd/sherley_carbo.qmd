@@ -244,6 +244,41 @@ ggplot() +
   theme_minimal(base_size = 13)
 ```
 
+## 2.3 Predicted Dose: CG-CrCl vs BSA-adjusted eGFR~CR-CYS~
+
+Overlay kernel density of the predicted carboplatin dose (Calvert formula, `AUC × (eGFR + 25)`, eGFR capped at 125 mL/min) computed two ways: using Cockcroft-Gault creatinine clearance vs using the BSA-adjusted CKD-EPI Cr-Cys equation. Shows how the two kidney-function estimators would translate into different dose recommendations across the carboplatin cohort.
+
+```{r}
+#| label: jx-carbo-dose-cg-vs-epi-density
+#| fig-width: 9
+#| fig-height: 5
+dose_pred_long <- dat %>%
+  mutate(carbo_dose_cg = carbo_AUC * (cockcroft_cap125 + 25)) %>%
+  select(record_id, carbo_dose_cg, carbo_dose_cre_cys) %>%
+  pivot_longer(
+    cols = c(carbo_dose_cg, carbo_dose_cre_cys),
+    names_to = "predictor", values_to = "dose_mg"
+  ) %>%
+  filter(!is.na(dose_mg)) %>%
+  mutate(predictor = case_match(predictor,
+    "carbo_dose_cg"      ~ "Predicted (CG-CrCl)",
+    "carbo_dose_cre_cys" ~ "Predicted (BSA-adjusted eGFRCR-CYS)"
+  ))
+
+ggplot(dose_pred_long, aes(x = dose_mg, fill = predictor, color = predictor)) +
+  geom_density(alpha = 0.35, linewidth = 0.7) +
+  scale_fill_manual(values = c("Predicted (CG-CrCl)" = "#33A02C",
+                                "Predicted (BSA-adjusted eGFRCR-CYS)" = "#1F78B4")) +
+  scale_color_manual(values = c("Predicted (CG-CrCl)" = "#33A02C",
+                                 "Predicted (BSA-adjusted eGFRCR-CYS)" = "#1F78B4")) +
+  labs(title = "Predicted Carboplatin Dose: CG-CrCl vs BSA-adjusted eGFRCR-CYS",
+       x = "Predicted dose (mg)  =  AUC × (eGFR + 25),  eGFR capped at 125 mL/min",
+       y = "Density",
+       fill = NULL, color = NULL) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "top")
+```
+
 # 3 Table 1: Baseline Characteristics (Carboplatin Only)
 
 ```{r}
@@ -263,7 +298,13 @@ dat %>%
     cockcroft, egfr_ratio
   ) %>%
   tbl_summary(
-    statistic = list(age ~ "{median} ({p25}, {p75})")
+    statistic = list(age ~ "{median} ({p25}, {p75})"),
+    label = list(
+      ckd_epi_gfr_cre_cys         ~ "eGFR CKD-EPI Cr-Cys, indexed (mL/min/1.73 m²)",
+      ckd_epi_gfr_cre_cys_unindex ~ "BSA-adjusted eGFR CKD-EPI Cr-Cys (mL/min)",
+      cockcroft                   ~ "Cockcroft-Gault CrCl (mL/min)",
+      egfr_ratio                  ~ "eGFR ratio: CKD-EPI Cr-Cys / CG"
+    )
   )
 ```
 
