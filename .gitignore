@@ -12,3 +12,6 @@ Reference code/
 *.csv
 render.log
 _freeze/
+.Rhistory
+.RData
+.Rproj.user/
