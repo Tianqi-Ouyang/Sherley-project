@@ -1696,7 +1696,7 @@ Patients are split into **deciles of carboplatin dose discrepancy** (actual − 
 ```{r}
 #| label: jx-carbo-loess-decile
 #| fig-width: 9
-#| fig-height: 5.5
+#| fig-height: 11
 loess_df <- dat %>%
   filter(!is.na(dose_discrepancy)) %>%
   mutate(
@@ -1729,23 +1729,25 @@ decile_summary <- loess_df %>%
 ggplot(decile_summary, aes(x = dd_mean, y = pct, color = outcome, fill = outcome)) +
   geom_smooth(method = "loess", se = TRUE, alpha = 0.15, linewidth = 0.9,
               span = 1) +
-  geom_point(size = 2.6) +
+  geom_point(size = 2.8) +
+  facet_wrap(~ outcome, ncol = 1, scales = "fixed") +
   scale_color_manual(values = c(
     "Platinum-AE hospitalization"        = "#1F78B4",
     "90-day death"                       = "#E31A1C",
-    "Cancer-progression hospitalization" = "#33A02C")) +
+    "Cancer-progression hospitalization" = "#33A02C"),
+    guide = "none") +
   scale_fill_manual(values = c(
     "Platinum-AE hospitalization"        = "#1F78B4",
     "90-day death"                       = "#E31A1C",
-    "Cancer-progression hospitalization" = "#33A02C")) +
+    "Cancer-progression hospitalization" = "#33A02C"),
+    guide = "none") +
   labs(title = "Outcome Rate by Carboplatin Dose Discrepancy Decile (Carboplatin)",
-       subtitle = "One dot per decile (10 deciles); LOESS trend with 95% CI",
+       subtitle = "One dot per decile (10 deciles); LOESS trend with 95% CI — one panel per outcome",
        x = "Carboplatin dose discrepancy (mg, mean within decile) = actual − predicted",
-       y = "Outcome within 90 days (%)",
-       color = NULL, fill = NULL) +
+       y = "Outcome within 90 days (%)") +
   theme_minimal(base_size = 14) +
-  theme(legend.position = "top",
-        plot.subtitle = element_text(size = 12, color = "grey25")) -> p
+  theme(plot.subtitle = element_text(size = 12, color = "grey25"),
+        strip.text = element_text(size = 13, face = "bold")) -> p
 .save_plot_pptx(p)
 p
 ```
