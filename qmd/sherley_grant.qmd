@@ -126,7 +126,33 @@ cat("Carboplatin cohort N =", nrow(dat), "\n")
 cat("eGFR difference available for N =", sum(!is.na(dat$egfr_difference)), "\n")
 ```
 
-# 2 eGFR Difference Distribution (Carboplatin)
+# 2 Carboplatin Dose Administered
+
+Actual carboplatin dose administered (REDCap field `carbo_dose_redcap`, mg) across
+the 121-patient carboplatin cohort. All 121 have a thoracic primary and every
+patient has a recorded dose, so the denominator is the full cohort.
+
+```{r}
+#| label: jx-grant-carbo-dose-summary
+dose_vals <- dat$carbo_dose_redcap
+dose_vals <- dose_vals[!is.na(dose_vals)]
+
+tibble::tibble(
+  Statistic = c("N with a recorded dose", "Mean (SD)", "Median (IQR)",
+                "Range (min – max)"),
+  Value = c(
+    as.character(length(dose_vals)),
+    sprintf("%.1f (%.1f) mg", mean(dose_vals), sd(dose_vals)),
+    sprintf("%.1f (%.1f, %.1f) mg", median(dose_vals),
+            quantile(dose_vals, 0.25), quantile(dose_vals, 0.75)),
+    sprintf("%.1f – %.1f mg", min(dose_vals), max(dose_vals))
+  )
+) %>%
+  knitr::kable(align = c("l", "r"),
+               caption = "Actual carboplatin dose administered (mg), carboplatin cohort.")
+```
+
+# 3 eGFR Difference Distribution (Carboplatin)
 
 Mirrors §4 of the Carboplatin Cohort page, re-expressed as a percentage. Bins are
 10 % wide with an axis tick at every bin edge. The red dashed line marks
@@ -180,7 +206,7 @@ tibble::tibble(
                caption = "eGFR difference (%) — distribution summary (carboplatin cohort).")
 ```
 
-# 3 Linear subHR Curves — eGFR Difference (Carboplatin)
+# 4 Linear subHR Curves — eGFR Difference (Carboplatin)
 
 Mirrors §9.1–9.10 of the Carboplatin Cohort page, with the exposure re-expressed
 as the eGFR difference in **percent** (ticks every 10 %). Each curve is the
@@ -256,7 +282,7 @@ plot_subhr_linear_diff <- function(time_var, status_var, extra_adj = NULL,
 }
 ```
 
-## 3.1 Anemia Grade 2
+## 4.1 Anemia Grade 2
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-anemia2
@@ -266,7 +292,7 @@ plot_subhr_linear_diff("cmp_time_anemia_2", "cmp_status_anemia_2",
                        "pre_HGB_45days", "Anemia Grade 2 (Carboplatin)")
 ```
 
-## 3.2 Anemia Grade 3
+## 4.2 Anemia Grade 3
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-anemia3
@@ -276,7 +302,7 @@ plot_subhr_linear_diff("cmp_time_anemia_3", "cmp_status_anemia_3",
                        "pre_HGB_45days", "Anemia Grade 3 (Carboplatin)")
 ```
 
-## 3.3 Thrombocytopenia Grade 2
+## 4.3 Thrombocytopenia Grade 2
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-throm2
@@ -286,7 +312,7 @@ plot_subhr_linear_diff("cmp_time_throm_2", "cmp_status_throm_2",
                        "pre_PLT_45days", "Thrombocytopenia Grade 2 (Carboplatin)")
 ```
 
-## 3.4 Thrombocytopenia Grade 3
+## 4.4 Thrombocytopenia Grade 3
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-throm3
@@ -296,7 +322,7 @@ plot_subhr_linear_diff("cmp_time_throm_3", "cmp_status_throm_3",
                        "pre_PLT_45days", "Thrombocytopenia Grade 3 (Carboplatin)")
 ```
 
-## 3.5 AKI Grade 2
+## 4.5 AKI Grade 2
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-aki2
@@ -306,7 +332,7 @@ plot_subhr_linear_diff("cmp_time_aki_2", "cmp_status_aki_2",
                        NULL, "AKI Grade 2 (Carboplatin)")
 ```
 
-## 3.6 AKI (KDIGO)
+## 4.6 AKI (KDIGO)
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-akikdigo
@@ -316,7 +342,7 @@ plot_subhr_linear_diff("cmp_time_aki_kdigo", "cmp_status_aki_kdigo",
                        NULL, "AKI (KDIGO) (Carboplatin)")
 ```
 
-## 3.7 Composite Grade 2 AEs
+## 4.7 Composite Grade 2 AEs
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-grade2
@@ -327,7 +353,7 @@ plot_subhr_linear_diff("cmp_time_grade_2_aes", "cmp_status_grade_2_aes",
                        "Composite Grade 2 AEs (Carboplatin)")
 ```
 
-## 3.8 Composite Grade 3 AEs
+## 4.8 Composite Grade 3 AEs
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-grade3
@@ -338,7 +364,7 @@ plot_subhr_linear_diff("cmp_time_grade_3_aes", "cmp_status_grade_3_aes",
                        "Composite Grade 3 AEs (Carboplatin)")
 ```
 
-## 3.9 Overall Hospitalization
+## 4.9 Overall Hospitalization
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-anyhosp
@@ -348,7 +374,7 @@ plot_subhr_linear_diff("cmp_time_any_hosp", "cmp_status_any_hosp",
                        NULL, "Overall Hospitalization (Carboplatin)")
 ```
 
-## 3.10 Platinum-Related Hospitalization
+## 4.10 Platinum-Related Hospitalization
 
 ```{r}
 #| label: jx-grant-linsubhr-diff-sideeffect
@@ -358,7 +384,7 @@ plot_subhr_linear_diff("cmp_time_side_effect", "cmp_status_side_effect",
                        NULL, "Platinum-Related Hospitalization (Carboplatin)")
 ```
 
-# 4 Downloadable PowerPoint Plots
+# 5 Downloadable PowerPoint Plots
 
 Every figure on this page is also saved as an editable **PowerPoint slide**
 (vector graphics — text and shapes remain editable in PowerPoint). Click any

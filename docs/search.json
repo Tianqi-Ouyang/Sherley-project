@@ -10,71 +10,71 @@
     "objectID": "qmd/sherley_grant.html#anemia-grade-2",
     "href": "qmd/sherley_grant.html#anemia-grade-2",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.1 Anemia Grade 2",
-    "text": "3.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                       \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")"
+    "section": "4.1 Anemia Grade 2",
+    "text": "4.1 Anemia Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_anemia_2\", \"cmp_status_anemia_2\",\n                       \"pre_HGB_45days\", \"Anemia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#anemia-grade-3",
     "href": "qmd/sherley_grant.html#anemia-grade-3",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.2 Anemia Grade 3",
-    "text": "3.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                       \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")"
+    "section": "4.2 Anemia Grade 3",
+    "text": "4.2 Anemia Grade 3\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_anemia_3\", \"cmp_status_anemia_3\",\n                       \"pre_HGB_45days\", \"Anemia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#thrombocytopenia-grade-2",
     "href": "qmd/sherley_grant.html#thrombocytopenia-grade-2",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.3 Thrombocytopenia Grade 2",
-    "text": "3.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")"
+    "section": "4.3 Thrombocytopenia Grade 2",
+    "text": "4.3 Thrombocytopenia Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_throm_2\", \"cmp_status_throm_2\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#thrombocytopenia-grade-3",
     "href": "qmd/sherley_grant.html#thrombocytopenia-grade-3",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.4 Thrombocytopenia Grade 3",
-    "text": "3.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")"
+    "section": "4.4 Thrombocytopenia Grade 3",
+    "text": "4.4 Thrombocytopenia Grade 3\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_throm_3\", \"cmp_status_throm_3\",\n                       \"pre_PLT_45days\", \"Thrombocytopenia Grade 3 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#aki-grade-2",
     "href": "qmd/sherley_grant.html#aki-grade-2",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.5 AKI Grade 2",
-    "text": "3.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                       NULL, \"AKI Grade 2 (Carboplatin)\")"
+    "section": "4.5 AKI Grade 2",
+    "text": "4.5 AKI Grade 2\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_aki_2\", \"cmp_status_aki_2\",\n                       NULL, \"AKI Grade 2 (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#aki-kdigo",
     "href": "qmd/sherley_grant.html#aki-kdigo",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.6 AKI (KDIGO)",
-    "text": "3.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                       NULL, \"AKI (KDIGO) (Carboplatin)\")"
+    "section": "4.6 AKI (KDIGO)",
+    "text": "4.6 AKI (KDIGO)\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_aki_kdigo\", \"cmp_status_aki_kdigo\",\n                       NULL, \"AKI (KDIGO) (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#composite-grade-2-aes",
     "href": "qmd/sherley_grant.html#composite-grade-2-aes",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.7 Composite Grade 2 AEs",
-    "text": "3.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                       c(\"pre_HGB_45days\", \"pre_PLT_45days\"),\n                       \"Composite Grade 2 AEs (Carboplatin)\")"
+    "section": "4.7 Composite Grade 2 AEs",
+    "text": "4.7 Composite Grade 2 AEs\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_grade_2_aes\", \"cmp_status_grade_2_aes\",\n                       c(\"pre_HGB_45days\", \"pre_PLT_45days\"),\n                       \"Composite Grade 2 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#composite-grade-3-aes",
     "href": "qmd/sherley_grant.html#composite-grade-3-aes",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.8 Composite Grade 3 AEs",
-    "text": "3.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                       c(\"pre_HGB_45days\", \"pre_PLT_45days\"),\n                       \"Composite Grade 3 AEs (Carboplatin)\")"
+    "section": "4.8 Composite Grade 3 AEs",
+    "text": "4.8 Composite Grade 3 AEs\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_grade_3_aes\", \"cmp_status_grade_3_aes\",\n                       c(\"pre_HGB_45days\", \"pre_PLT_45days\"),\n                       \"Composite Grade 3 AEs (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#overall-hospitalization",
     "href": "qmd/sherley_grant.html#overall-hospitalization",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.9 Overall Hospitalization",
-    "text": "3.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                       NULL, \"Overall Hospitalization (Carboplatin)\")"
+    "section": "4.9 Overall Hospitalization",
+    "text": "4.9 Overall Hospitalization\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_any_hosp\", \"cmp_status_any_hosp\",\n                       NULL, \"Overall Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_grant.html#platinum-related-hospitalization",
     "href": "qmd/sherley_grant.html#platinum-related-hospitalization",
     "title": "Sherley Project — Grant Figures",
-    "section": "3.10 Platinum-Related Hospitalization",
-    "text": "3.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                       NULL, \"Platinum-Related Hospitalization (Carboplatin)\")"
+    "section": "4.10 Platinum-Related Hospitalization",
+    "text": "4.10 Platinum-Related Hospitalization\n\n\nCode\nplot_subhr_linear_diff(\"cmp_time_side_effect\", \"cmp_status_side_effect\",\n                       NULL, \"Platinum-Related Hospitalization (Carboplatin)\")"
   },
   {
     "objectID": "qmd/sherley_data.html",
