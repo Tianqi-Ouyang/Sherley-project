@@ -14,24 +14,26 @@ Grant-figure versions of the Carboplatin Cohort analyses, re-expressed on the
 **eGFR difference** scale.
 
 $$
-\text{eGFR difference} \;=\; \frac{\text{eGFR}_{\text{CR-CYS}} - \text{CrCl}_{\text{CG}}}{\text{CrCl}_{\text{CG}}}
+\text{eGFR difference (\%)} \;=\; \frac{\text{eGFR}_{\text{CR-CYS}} - \text{CrCl}_{\text{CG}}}{\text{CrCl}_{\text{CG}}} \times 100
 $$
 
 Both terms in the numerator are in **mL/min**: the CKD-EPI creatinine–cystatin C
 eGFR is the version **adjusted for actual body surface area**
 (`ckd_epi_gfr_cre_cys_unindex`, mL/min — *not* the 1.73 m²-indexed
 `ckd_epi_gfr_cre_cys`), matching the units of Cockcroft-Gault creatinine
-clearance. The resulting difference is a **unitless relative difference**:
-`0` means the two estimators agree, `+0.20` means CKD-EPI Cr-Cys is 20 % higher
-than Cockcroft-Gault, `-0.20` means 20 % lower.
+clearance. The result is expressed as a **percentage**: `0 %` means the two
+estimators agree, `+20 %` means CKD-EPI Cr-Cys is 20 % higher than
+Cockcroft-Gault, `−20 %` means 20 % lower.
 
 ::: {.callout-note}
 ## Relationship to the eGFR ratio used on the Carboplatin page
-Because `egfr_difference = (eGFR − CG) / CG = egfr_ratio − 1`, this is a pure
-re-centring of the eGFR ratio: the reference point moves from 1 to 0. The
-Fine-Gray coefficients, standard errors and p-values are therefore **identical**
-to the corresponding figures in §9 of the Carboplatin Cohort page — only the
-x-axis scale differs.
+Because `egfr_difference = 100 × ((eGFR − CG) / CG) = 100 × (egfr_ratio − 1)`,
+this is a pure re-centring and rescaling of the eGFR ratio: the reference point
+moves from 1 to 0 %. The underlying Fine-Gray fits are therefore the same models
+as §9 of the Carboplatin Cohort page — identical p-values. The reported subHRs
+differ only because this page reports them **per 10 % decrease** in eGFR
+difference, whereas §9 reports per 0.1-unit *increase* in the ratio; the two are
+reciprocals of each other.
 :::
 
 ```{r}
@@ -85,8 +87,12 @@ dir.create(pptx_dir, recursive = TRUE, showWarnings = FALSE)
                          unit_label = "per 1-unit increase") {
   se   <- sqrt(V_beta)
   hr   <- exp(beta * scale)
-  lcl  <- exp((beta - 1.96 * se) * scale)
-  ucl  <- exp((beta + 1.96 * se) * scale)
+  b1   <- exp((beta - 1.96 * se) * scale)
+  b2   <- exp((beta + 1.96 * se) * scale)
+  # A negative `scale` (reporting per unit DECREASE) reverses the bound order,
+  # so sort rather than assuming b1 <= b2.
+  lcl  <- min(b1, b2)
+  ucl  <- max(b1, b2)
   pval <- 2 * (1 - pnorm(abs(beta / se)))
   p_str <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
   sprintf("%s = %.2f (95%% CI %.2f-%.2f), p = %s   (%s)",
@@ -112,8 +118,8 @@ dat <- readRDS("sherley_final_master.rds") %>%
 dat <- dat %>%
   mutate(
     # BSA-adjusted CKD-EPI Cr-Cys (mL/min) vs Cockcroft-Gault CrCl (mL/min).
-    # Relative difference — unitless; 0 = the two estimators agree.
-    egfr_difference = (ckd_epi_gfr_cre_cys_unindex - cockcroft) / cockcroft
+    # Relative difference expressed as a PERCENT; 0 % = the two estimators agree.
+    egfr_difference = 100 * (ckd_epi_gfr_cre_cys_unindex - cockcroft) / cockcroft
   )
 
 cat("Carboplatin cohort N =", nrow(dat), "\n")
@@ -122,30 +128,30 @@ cat("eGFR difference available for N =", sum(!is.na(dat$egfr_difference)), "\n")
 
 # 2 eGFR Difference Distribution (Carboplatin)
 
-Mirrors §4 of the Carboplatin Cohort page, re-expressed on the eGFR difference
-scale. The red dashed line at **0** marks perfect agreement between the
-BSA-adjusted CKD-EPI Cr-Cys eGFR and Cockcroft-Gault creatinine clearance.
+Mirrors §4 of the Carboplatin Cohort page, re-expressed as a percentage. Bins are
+10 % wide with an axis tick at every bin edge. The red dashed line marks
+**−10 %** — the randomization cutoff.
 
 ```{r}
 #| label: jx-grant-egfr-diff-hist
-#| fig-width: 8
+#| fig-width: 9
 #| fig-height: 5
 diff_hist <- dat %>% filter(!is.na(egfr_difference))
 
 ggplot(diff_hist, aes(x = egfr_difference)) +
   geom_histogram(aes(y = after_stat(count) / sum(after_stat(count)) * 100),
-                 binwidth = 0.1, boundary = 0,
+                 binwidth = 10, boundary = 0,
                  fill = "steelblue", color = "black", alpha = 0.7) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = -10, linetype = "dashed", color = "red",
+             linewidth = 1.1) +
   labs(title = "Distribution of eGFR Difference (Carboplatin)",
-       subtitle = expression(paste("eGFR difference = (BSA-adjusted eGFR"[CR-CYS],
-                                   " − CrCl"[CG], ") / CrCl"[CG])),
-       x = expression(paste("eGFR difference  =  (eGFR"[CR-CYS],
-                            " − CrCl"[CG], ") / CrCl"[CG], "   (mL/min basis)")),
+       subtitle = expression(paste("eGFR difference (%) = (eGFR"[CR-CYS],
+                                   " − CrCl"[CG], ") / CrCl"[CG], " × 100;  red line = −10 % cutoff")),
+       x = "eGFR difference (%)",
        y = "Percent of Patients (%)") +
-  scale_x_continuous(breaks = seq(-1, 2, 0.2)) +
+  scale_x_continuous(breaks = seq(-100, 200, 10)) +
   theme_minimal(base_size = 14) +
-  theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
+  theme(plot.subtitle = element_text(size = 11, color = "grey25")) -> p
 .save_plot_pptx(p)
 p
 ```
@@ -156,27 +162,34 @@ q <- quantile(diff_hist$egfr_difference, c(0.025, 0.25, 0.5, 0.75, 0.975),
               na.rm = TRUE)
 tibble::tibble(
   Statistic = c("N", "Median", "IQR (p25, p75)", "2.5th pct", "97.5th pct",
-                "% with eGFR Cr-Cys below CG (difference < 0)"),
+                "% with eGFR Cr-Cys below CG (difference < 0 %)",
+                "% at or below the −10 % randomization cutoff"),
   Value = c(
     as.character(nrow(diff_hist)),
-    sprintf("%.3f", q[["50%"]]),
-    sprintf("%.3f, %.3f", q[["25%"]], q[["75%"]]),
-    sprintf("%.3f", q[["2.5%"]]),
-    sprintf("%.3f", q[["97.5%"]]),
-    sprintf("%.1f%%", 100 * mean(diff_hist$egfr_difference < 0))
+    sprintf("%.1f%%", q[["50%"]]),
+    sprintf("%.1f%%, %.1f%%", q[["25%"]], q[["75%"]]),
+    sprintf("%.1f%%", q[["2.5%"]]),
+    sprintf("%.1f%%", q[["97.5%"]]),
+    sprintf("%.1f%%", 100 * mean(diff_hist$egfr_difference < 0)),
+    sprintf("%.1f%% (n = %d)",
+            100 * mean(diff_hist$egfr_difference <= -10),
+            sum(diff_hist$egfr_difference <= -10))
   )
 ) %>%
   knitr::kable(align = c("l", "r"),
-               caption = "eGFR difference — distribution summary (carboplatin cohort).")
+               caption = "eGFR difference (%) — distribution summary (carboplatin cohort).")
 ```
 
 # 3 Linear subHR Curves — eGFR Difference (Carboplatin)
 
 Mirrors §9.1–9.10 of the Carboplatin Cohort page, with the exposure re-expressed
-as the eGFR difference. Each curve is the adjusted Fine-Gray subdistribution
-hazard ratio as a smooth linear function of the eGFR difference, plotted
-relative to the cohort median (dotted vertical line). The dashed horizontal line
-marks subHR = 1. Models adjust for age, sex, ECOG score, ICI use and
+as the eGFR difference in **percent** (ticks every 10 %). Each curve is the
+adjusted Fine-Gray subdistribution hazard ratio as a smooth linear function of
+the eGFR difference, plotted relative to the cohort median (dotted vertical
+line). The dashed horizontal line marks subHR = 1. **Reported subHRs are per
+10 % _decrease_ in eGFR difference**, so a subHR above 1 means a larger
+CKD-EPI-Cr-Cys shortfall relative to Cockcroft-Gault carries higher risk. Models
+adjust for age, sex, ECOG score, ICI use and
 Cockcroft-Gault CrCl, plus baseline haemoglobin (anemia), baseline platelets
 (thrombocytopenia) or both (composite cytopenia outcomes).
 
@@ -204,9 +217,11 @@ plot_subhr_linear_diff <- function(time_var, status_var, extra_adj = NULL,
 
   beta   <- fit$coef[1]
   V_beta <- fit$var[1, 1]
-  subtitle_str <- .hr_subtitle(beta, V_beta, scale = 0.1,
+  # egfr_difference is in percentage points, so beta is per 1 pp. Report per
+  # 10 % DECREASE => scale = -10 (negative direction handled in .hr_subtitle).
+  subtitle_str <- .hr_subtitle(beta, V_beta, scale = -10,
                                hr_type = "subHR",
-                               unit_label = "per 0.1-unit increase in eGFR difference")
+                               unit_label = "per 10% decrease")
 
   ref_x  <- median(d$egfr_difference, na.rm = TRUE)
   grid_x <- seq(quantile(d$egfr_difference, 0.025, na.rm = TRUE),
@@ -228,14 +243,14 @@ plot_subhr_linear_diff <- function(time_var, status_var, extra_adj = NULL,
     geom_line(color = "darkorange", linewidth = 1) +
     geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
     geom_vline(xintercept = ref_x, linetype = "dotted", color = "grey40") +
-    labs(x = expression(paste("eGFR difference  =  (eGFR"[CR-CYS],
-                              " − CrCl"[CG], ") / CrCl"[CG])),
+    labs(x = "eGFR difference (%)",
          y = "subHR (95% CI)",
          title = outcome_label,
          subtitle = subtitle_str) +
-    coord_cartesian(xlim = c(-0.35, 0.45), ylim = c(0, 4)) +
+    scale_x_continuous(breaks = seq(-100, 100, 10)) +
+    coord_cartesian(xlim = c(-35, 45), ylim = c(0, 4)) +
     theme_minimal(base_size = 14) +
-    theme(plot.subtitle = element_text(size = 12, color = "grey25")) -> p
+    theme(plot.subtitle = element_text(size = 10, color = "grey25")) -> p
   .save_plot_pptx(p)
   p
 }
