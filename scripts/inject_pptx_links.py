@@ -5,12 +5,20 @@ Post-render hook for the Sherley Quarto site.
 After `quarto render`, scan each rendered HTML page in docs/qmd/ for
 <img src="..._files/figure-html/<chunk-label>-N.png"> figures, and inject
 an editable-PowerPoint download link immediately below the image when a
-matching pptx exists in docs/plots/carbo/.
+matching pptx exists under docs/plots/<subdir>/.
 
-Mapping rule (matches .save_plot_pptx in sherley_carbo.qmd):
+Mapping rule (matches .save_plot_pptx in the qmd setup chunks):
   chunk_label = strip trailing "-<digits>.png" from the PNG basename
   pptx_slug   = chunk_label with [^A-Za-z0-9]+ collapsed to "_"
-  pptx_file   = docs/plots/carbo/<pptx_slug>.pptx
+  pptx_file   = docs/plots/<subdir>/<pptx_slug>.pptx
+
+Every subdirectory of docs/plots/ is scanned (carbo/, grant/, ...), so new
+analysis pages only need their own pptx output directory — no change here.
+Chunk labels are unique per page (jx-carbo-*, jx-grant-*), so a single flat
+slug -> file map is unambiguous.
+
+Idempotent: pages that already carry a pptx-link div for a figure are left
+alone, so re-running the script never duplicates links.
 """
 
 from __future__ import annotations
@@ -20,8 +28,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PPTX_DIR_ABS = ROOT / "docs" / "plots" / "carbo"
-PPTX_DIR_REL = "../plots/carbo"
+PLOTS_ROOT = ROOT / "docs" / "plots"
 
 IMG_RE = re.compile(
     r'<img\s+src="([^"]*figure-html/[^"]+?\.png)"[^>]*?/?>',
@@ -39,7 +46,18 @@ def slugify(label: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", label)
 
 
-def inject(html: str) -> tuple[str, int]:
+def build_pptx_map() -> dict[str, str]:
+    """Map pptx slug -> href relative to a page in docs/qmd/."""
+    mapping: dict[str, str] = {}
+    if not PLOTS_ROOT.is_dir():
+        return mapping
+    for subdir in sorted(p for p in PLOTS_ROOT.iterdir() if p.is_dir()):
+        for pptx in sorted(subdir.glob("*.pptx")):
+            mapping[pptx.stem] = f"../plots/{subdir.name}/{pptx.name}"
+    return mapping
+
+
+def inject(html: str, pptx_map: dict[str, str]) -> tuple[str, int]:
     n_added = 0
 
     def replace(m: re.Match[str]) -> str:
@@ -51,28 +69,34 @@ def inject(html: str) -> tuple[str, int]:
         m2 = re.match(r"(.+?)-\d+\.png$", fname)
         if not m2:
             return img_tag
-        chunk_label = m2.group(1)
-        pptx_slug = slugify(chunk_label)
-        pptx_file = PPTX_DIR_ABS / f"{pptx_slug}.pptx"
-        if not pptx_file.exists():
+        pptx_slug = slugify(m2.group(1))
+        href = pptx_map.get(pptx_slug)
+        if href is None:
             return img_tag
-        href = f"{PPTX_DIR_REL}/{pptx_slug}.pptx"
-        link = LINK_DIV_TMPL.format(href=href)
         n_added += 1
-        return img_tag + link
+        return img_tag + LINK_DIV_TMPL.format(href=href)
 
     new_html = IMG_RE.sub(replace, html)
     return new_html, n_added
 
 
 def main() -> None:
-    pages = list((ROOT / "docs" / "qmd").glob("sherley_*.html"))
+    pptx_map = build_pptx_map()
+    if not pptx_map:
+        print("[inject_pptx_links] no .pptx files under docs/plots/ — skipping.")
+        return
+
+    pages = sorted((ROOT / "docs" / "qmd").glob("sherley_*.html"))
     if not pages:
         print("[inject_pptx_links] no docs/qmd/sherley_*.html pages found — skipping.")
         return
+
     for page in pages:
         text = page.read_text(encoding="utf-8")
-        new_text, n = inject(text)
+        if 'class="pptx-link"' in text:
+            print(f"[inject_pptx_links] {page.relative_to(ROOT)}: already injected — skipping.")
+            continue
+        new_text, n = inject(text, pptx_map)
         if n > 0:
             page.write_text(new_text, encoding="utf-8")
         print(f"[inject_pptx_links] {page.relative_to(ROOT)}: +{n} pptx link(s)")
