@@ -246,9 +246,9 @@ window.Quarto = {
 <h1>1 Setup</h1>
 <p>Grant-figure versions of the Carboplatin Cohort analyses, re-expressed on the <strong>eGFR difference</strong> scale.</p>
 <p><span class="math display">\[
-\text{eGFR difference} \;=\; \frac{\text{eGFR}_{\text{CR-CYS}} - \text{CrCl}_{\text{CG}}}{\text{CrCl}_{\text{CG}}}
+\text{eGFR difference (\%)} \;=\; \frac{\text{eGFR}_{\text{CR-CYS}} - \text{CrCl}_{\text{CG}}}{\text{CrCl}_{\text{CG}}} \times 100
 \]</span></p>
-<p>Both terms in the numerator are in <strong>mL/min</strong>: the CKD-EPI creatinine–cystatin C eGFR is the version <strong>adjusted for actual body surface area</strong> (<code>ckd_epi_gfr_cre_cys_unindex</code>, mL/min — <em>not</em> the 1.73 m²-indexed <code>ckd_epi_gfr_cre_cys</code>), matching the units of Cockcroft-Gault creatinine clearance. The resulting difference is a <strong>unitless relative difference</strong>: <code>0</code> means the two estimators agree, <code>+0.20</code> means CKD-EPI Cr-Cys is 20 % higher than Cockcroft-Gault, <code>-0.20</code> means 20 % lower.</p>
+<p>Both terms in the numerator are in <strong>mL/min</strong>: the CKD-EPI creatinine–cystatin C eGFR is the version <strong>adjusted for actual body surface area</strong> (<code>ckd_epi_gfr_cre_cys_unindex</code>, mL/min — <em>not</em> the 1.73 m²-indexed <code>ckd_epi_gfr_cre_cys</code>), matching the units of Cockcroft-Gault creatinine clearance. The result is expressed as a <strong>percentage</strong>: <code>0 %</code> means the two estimators agree, <code>+20 %</code> means CKD-EPI Cr-Cys is 20 % higher than Cockcroft-Gault, <code>−20 %</code> means 20 % lower.</p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -259,7 +259,7 @@ window.Quarto = {
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Because <code>egfr_difference = (eGFR − CG) / CG = egfr_ratio − 1</code>, this is a pure re-centring of the eGFR ratio: the reference point moves from 1 to 0. The Fine-Gray coefficients, standard errors and p-values are therefore <strong>identical</strong> to the corresponding figures in §9 of the Carboplatin Cohort page — only the x-axis scale differs.</p>
+<p>Because <code>egfr_difference = 100 × ((eGFR − CG) / CG) = 100 × (egfr_ratio − 1)</code>, this is a pure re-centring and rescaling of the eGFR ratio: the reference point moves from 1 to 0 %. The underlying Fine-Gray fits are therefore the same models as §9 of the Carboplatin Cohort page — identical p-values. The reported subHRs differ only because this page reports them <strong>per 10 % decrease</strong> in eGFR difference, whereas §9 reports per 0.1-unit <em>increase</em> in the ratio; the two are reciprocals of each other.</p>
 </div>
 </div>
 <div class="cell">
@@ -314,38 +314,42 @@ window.Quarto = {
 <span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>                         <span class="at">unit_label =</span> <span class="st">"per 1-unit increase"</span>) {</span>
 <span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>  se   <span class="ot">&lt;-</span> <span class="fu">sqrt</span>(V_beta)</span>
 <span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>  hr   <span class="ot">&lt;-</span> <span class="fu">exp</span>(beta <span class="sc">*</span> scale)</span>
-<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>  lcl  <span class="ot">&lt;-</span> <span class="fu">exp</span>((beta <span class="sc">-</span> <span class="fl">1.96</span> <span class="sc">*</span> se) <span class="sc">*</span> scale)</span>
-<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>  ucl  <span class="ot">&lt;-</span> <span class="fu">exp</span>((beta <span class="sc">+</span> <span class="fl">1.96</span> <span class="sc">*</span> se) <span class="sc">*</span> scale)</span>
-<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>  pval <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pnorm</span>(<span class="fu">abs</span>(beta <span class="sc">/</span> se)))</span>
-<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>  p_str <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pval <span class="sc">&lt;</span> <span class="fl">0.001</span>, <span class="st">"&lt;0.001"</span>, <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, pval))</span>
-<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sprintf</span>(<span class="st">"%s = %.2f (95%% CI %.2f-%.2f), p = %s   (%s)"</span>,</span>
-<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>          hr_type, hr, lcl, ucl, p_str, unit_label)</span>
-<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a><span class="co"># Placeholder for outcomes whose design matrix is singular on this sub-cohort.</span></span>
-<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>.plot_failed <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">label =</span> <span class="st">"Model could not be fit"</span>) {</span>
-<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">ggplot</span>() <span class="sc">+</span></span>
-<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    <span class="fu">annotate</span>(<span class="st">"text"</span>, <span class="at">x =</span> <span class="fl">0.5</span>, <span class="at">y =</span> <span class="fl">0.5</span>,</span>
-<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>             <span class="at">label =</span> <span class="fu">paste0</span>(label, <span class="st">"</span><span class="sc">\n</span><span class="st">(singular design — cohort too small)"</span>),</span>
-<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>             <span class="at">size =</span> <span class="fl">3.5</span>) <span class="sc">+</span></span>
-<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_cartesian</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>)) <span class="sc">+</span></span>
-<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_void</span>()</span>
-<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>  <span class="fu">.save_plot_pptx</span>(p)</span>
-<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>  p</span>
-<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a><span class="co"># Load whole-cohort data, then keep only carboplatin patients</span></span>
-<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">"sherley_final_master.rds"</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(platin_group <span class="sc">==</span> <span class="st">"Carboplatin"</span>)</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>  b1   <span class="ot">&lt;-</span> <span class="fu">exp</span>((beta <span class="sc">-</span> <span class="fl">1.96</span> <span class="sc">*</span> se) <span class="sc">*</span> scale)</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>  b2   <span class="ot">&lt;-</span> <span class="fu">exp</span>((beta <span class="sc">+</span> <span class="fl">1.96</span> <span class="sc">*</span> se) <span class="sc">*</span> scale)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>  <span class="co"># A negative `scale` (reporting per unit DECREASE) reverses the bound order,</span></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>  <span class="co"># so sort rather than assuming b1 &lt;= b2.</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>  lcl  <span class="ot">&lt;-</span> <span class="fu">min</span>(b1, b2)</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>  ucl  <span class="ot">&lt;-</span> <span class="fu">max</span>(b1, b2)</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>  pval <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pnorm</span>(<span class="fu">abs</span>(beta <span class="sc">/</span> se)))</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>  p_str <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pval <span class="sc">&lt;</span> <span class="fl">0.001</span>, <span class="st">"&lt;0.001"</span>, <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, pval))</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sprintf</span>(<span class="st">"%s = %.2f (95%% CI %.2f-%.2f), p = %s   (%s)"</span>,</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>          hr_type, hr, lcl, ucl, p_str, unit_label)</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a><span class="co"># Placeholder for outcomes whose design matrix is singular on this sub-cohort.</span></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>.plot_failed <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">label =</span> <span class="st">"Model could not be fit"</span>) {</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    <span class="fu">annotate</span>(<span class="st">"text"</span>, <span class="at">x =</span> <span class="fl">0.5</span>, <span class="at">y =</span> <span class="fl">0.5</span>,</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>             <span class="at">label =</span> <span class="fu">paste0</span>(label, <span class="st">"</span><span class="sc">\n</span><span class="st">(singular design — cohort too small)"</span>),</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>             <span class="at">size =</span> <span class="fl">3.5</span>) <span class="sc">+</span></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_cartesian</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>)) <span class="sc">+</span></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_void</span>()</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>  <span class="fu">.save_plot_pptx</span>(p)</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>  p</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> dat <span class="sc">%&gt;%</span></span>
-<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
-<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>    <span class="co"># BSA-adjusted CKD-EPI Cr-Cys (mL/min) vs Cockcroft-Gault CrCl (mL/min).</span></span>
-<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Relative difference — unitless; 0 = the two estimators agree.</span></span>
-<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>    <span class="at">egfr_difference =</span> (ckd_epi_gfr_cre_cys_unindex <span class="sc">-</span> cockcroft) <span class="sc">/</span> cockcroft</span>
-<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Carboplatin cohort N ="</span>, <span class="fu">nrow</span>(dat), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a><span class="co"># Load whole-cohort data, then keep only carboplatin patients</span></span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">"sherley_final_master.rds"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(platin_group <span class="sc">==</span> <span class="st">"Carboplatin"</span>)</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> dat <span class="sc">%&gt;%</span></span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>    <span class="co"># BSA-adjusted CKD-EPI Cr-Cys (mL/min) vs Cockcroft-Gault CrCl (mL/min).</span></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Relative difference expressed as a PERCENT; 0 % = the two estimators agree.</span></span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    <span class="at">egfr_difference =</span> <span class="dv">100</span> <span class="sc">*</span> (ckd_epi_gfr_cre_cys_unindex <span class="sc">-</span> cockcroft) <span class="sc">/</span> cockcroft</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Carboplatin cohort N ="</span>, <span class="fu">nrow</span>(dat), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Carboplatin cohort N = 121 </code></pre>
@@ -361,7 +365,7 @@ window.Quarto = {
 </section>
 <section id="egfr-difference-distribution-carboplatin" class="level1">
 <h1>2 eGFR Difference Distribution (Carboplatin)</h1>
-<p>Mirrors §4 of the Carboplatin Cohort page, re-expressed on the eGFR difference scale. The red dashed line at <strong>0</strong> marks perfect agreement between the BSA-adjusted CKD-EPI Cr-Cys eGFR and Cockcroft-Gault creatinine clearance.</p>
+<p>Mirrors §4 of the Carboplatin Cohort page, re-expressed as a percentage. Bins are 10 % wide with an axis tick at every bin edge. The red dashed line marks <strong>−10 %</strong> — the randomization cutoff.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -369,25 +373,25 @@ window.Quarto = {
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(diff_hist, <span class="fu">aes</span>(<span class="at">x =</span> egfr_difference)) <span class="sc">+</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(<span class="at">y =</span> <span class="fu">after_stat</span>(count) <span class="sc">/</span> <span class="fu">sum</span>(<span class="fu">after_stat</span>(count)) <span class="sc">*</span> <span class="dv">100</span>),</span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">binwidth =</span> <span class="fl">0.1</span>, <span class="at">boundary =</span> <span class="dv">0</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">binwidth =</span> <span class="dv">10</span>, <span class="at">boundary =</span> <span class="dv">0</span>,</span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>                 <span class="at">fill =</span> <span class="st">"steelblue"</span>, <span class="at">color =</span> <span class="st">"black"</span>, <span class="at">alpha =</span> <span class="fl">0.7</span>) <span class="sc">+</span></span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="dv">0</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>, <span class="at">color =</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of eGFR Difference (Carboplatin)"</span>,</span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">subtitle =</span> <span class="fu">expression</span>(<span class="fu">paste</span>(<span class="st">"eGFR difference = (BSA-adjusted eGFR"</span>[CR<span class="sc">-</span>CYS],</span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>                                   <span class="st">" − CrCl"</span>[CG], <span class="st">") / CrCl"</span>[CG])),</span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">x =</span> <span class="fu">expression</span>(<span class="fu">paste</span>(<span class="st">"eGFR difference  =  (eGFR"</span>[CR<span class="sc">-</span>CYS],</span>
-<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>                            <span class="st">" − CrCl"</span>[CG], <span class="st">") / CrCl"</span>[CG], <span class="st">"   (mL/min basis)"</span>)),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="sc">-</span><span class="dv">10</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>, <span class="at">color =</span> <span class="st">"red"</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">linewidth =</span> <span class="fl">1.1</span>) <span class="sc">+</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of eGFR Difference (Carboplatin)"</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>       <span class="at">subtitle =</span> <span class="fu">expression</span>(<span class="fu">paste</span>(<span class="st">"eGFR difference (%) = (eGFR"</span>[CR<span class="sc">-</span>CYS],</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>                                   <span class="st">" − CrCl"</span>[CG], <span class="st">") / CrCl"</span>[CG], <span class="st">" × 100;  red line = −10 % cutoff"</span>)),</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">x =</span> <span class="st">"eGFR difference (%)"</span>,</span>
 <span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">y =</span> <span class="st">"Percent of Patients (%)"</span>) <span class="sc">+</span></span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">breaks =</span> <span class="fu">seq</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="dv">2</span>, <span class="fl">0.2</span>)) <span class="sc">+</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">breaks =</span> <span class="fu">seq</span>(<span class="sc">-</span><span class="dv">100</span>, <span class="dv">200</span>, <span class="dv">10</span>)) <span class="sc">+</span></span>
 <span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
-<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">plot.subtitle =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">12</span>, <span class="at">color =</span> <span class="st">"grey25"</span>)) <span class="ot">-&gt;</span> p</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">plot.subtitle =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>, <span class="at">color =</span> <span class="st">"grey25"</span>)) <span class="ot">-&gt;</span> p</span>
 <span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="fu">.save_plot_pptx</span>(p)</span>
 <span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>p</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="sherley_grant_files/figure-html/jx-grant-egfr-diff-hist-1.png" class="img-fluid figure-img" width="768">
+<p><img src="sherley_grant_files/figure-html/jx-grant-egfr-diff-hist-1.png" class="img-fluid figure-img" width="864">
 <div class="pptx-link" style="margin:-0.5em 0 1.3em 0;font-size:0.85em;text-align:center;"><a href="../plots/grant/jx_grant_egfr_diff_hist.pptx" download>📥 Download editable PowerPoint</a></div>
 </p>
 </figure>
@@ -401,22 +405,26 @@ window.Quarto = {
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>              <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
 <span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">Statistic =</span> <span class="fu">c</span>(<span class="st">"N"</span>, <span class="st">"Median"</span>, <span class="st">"IQR (p25, p75)"</span>, <span class="st">"2.5th pct"</span>, <span class="st">"97.5th pct"</span>,</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>                <span class="st">"% with eGFR Cr-Cys below CG (difference &lt; 0)"</span>),</span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">Value =</span> <span class="fu">c</span>(</span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.character</span>(<span class="fu">nrow</span>(diff_hist)),</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, q[[<span class="st">"50%"</span>]]),</span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.3f, %.3f"</span>, q[[<span class="st">"25%"</span>]], q[[<span class="st">"75%"</span>]]),</span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, q[[<span class="st">"2.5%"</span>]]),</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, q[[<span class="st">"97.5%"</span>]]),</span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%"</span>, <span class="dv">100</span> <span class="sc">*</span> <span class="fu">mean</span>(diff_hist<span class="sc">$</span>egfr_difference <span class="sc">&lt;</span> <span class="dv">0</span>))</span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span></span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">align =</span> <span class="fu">c</span>(<span class="st">"l"</span>, <span class="st">"r"</span>),</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>               <span class="at">caption =</span> <span class="st">"eGFR difference — distribution summary (carboplatin cohort)."</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>                <span class="st">"% with eGFR Cr-Cys below CG (difference &lt; 0 %)"</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>                <span class="st">"% at or below the −10 % randomization cutoff"</span>),</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">Value =</span> <span class="fu">c</span>(</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.character</span>(<span class="fu">nrow</span>(diff_hist)),</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%"</span>, q[[<span class="st">"50%"</span>]]),</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%, %.1f%%"</span>, q[[<span class="st">"25%"</span>]], q[[<span class="st">"75%"</span>]]),</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%"</span>, q[[<span class="st">"2.5%"</span>]]),</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%"</span>, q[[<span class="st">"97.5%"</span>]]),</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%%"</span>, <span class="dv">100</span> <span class="sc">*</span> <span class="fu">mean</span>(diff_hist<span class="sc">$</span>egfr_difference <span class="sc">&lt;</span> <span class="dv">0</span>)),</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sprintf</span>(<span class="st">"%.1f%% (n = %d)"</span>,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>            <span class="dv">100</span> <span class="sc">*</span> <span class="fu">mean</span>(diff_hist<span class="sc">$</span>egfr_difference <span class="sc">&lt;=</span> <span class="sc">-</span><span class="dv">10</span>),</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>            <span class="fu">sum</span>(diff_hist<span class="sc">$</span>egfr_difference <span class="sc">&lt;=</span> <span class="sc">-</span><span class="dv">10</span>))</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">align =</span> <span class="fu">c</span>(<span class="st">"l"</span>, <span class="st">"r"</span>),</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>               <span class="at">caption =</span> <span class="st">"eGFR difference (%) — distribution summary (carboplatin cohort)."</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
-<caption>eGFR difference — distribution summary (carboplatin cohort).</caption>
+<caption>eGFR difference (%) — distribution summary (carboplatin cohort).</caption>
 <thead>
 <tr class="header">
 <th style="text-align: left;">Statistic</th>
@@ -430,23 +438,27 @@ window.Quarto = {
 </tr>
 <tr class="even">
 <td style="text-align: left;">Median</td>
-<td style="text-align: right;">-0.008</td>
+<td style="text-align: right;">-0.8%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">IQR (p25, p75)</td>
-<td style="text-align: right;">-0.143, 0.097</td>
+<td style="text-align: right;">-14.3%, 9.7%</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">2.5th pct</td>
-<td style="text-align: right;">-0.426</td>
+<td style="text-align: right;">-42.6%</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">97.5th pct</td>
-<td style="text-align: right;">0.442</td>
+<td style="text-align: right;">44.2%</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">% with eGFR Cr-Cys below CG (difference &lt; 0)</td>
+<td style="text-align: left;">% with eGFR Cr-Cys below CG (difference &lt; 0 %)</td>
 <td style="text-align: right;">51.2%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">% at or below the −10 % randomization cutoff</td>
+<td style="text-align: right;">32.2% (n = 39)</td>
 </tr>
 </tbody>
 </table>
@@ -455,7 +467,7 @@ window.Quarto = {
 </section>
 <section id="linear-subhr-curves-egfr-difference-carboplatin" class="level1">
 <h1>3 Linear subHR Curves — eGFR Difference (Carboplatin)</h1>
-<p>Mirrors §9.1–9.10 of the Carboplatin Cohort page, with the exposure re-expressed as the eGFR difference. Each curve is the adjusted Fine-Gray subdistribution hazard ratio as a smooth linear function of the eGFR difference, plotted relative to the cohort median (dotted vertical line). The dashed horizontal line marks subHR = 1. Models adjust for age, sex, ECOG score, ICI use and Cockcroft-Gault CrCl, plus baseline haemoglobin (anemia), baseline platelets (thrombocytopenia) or both (composite cytopenia outcomes).</p>
+<p>Mirrors §9.1–9.10 of the Carboplatin Cohort page, with the exposure re-expressed as the eGFR difference in <strong>percent</strong> (ticks every 10 %). Each curve is the adjusted Fine-Gray subdistribution hazard ratio as a smooth linear function of the eGFR difference, plotted relative to the cohort median (dotted vertical line). The dashed horizontal line marks subHR = 1. <strong>Reported subHRs are per 10 % <em>decrease</em> in eGFR difference</strong>, so a subHR above 1 means a larger CKD-EPI-Cr-Cys shortfall relative to Cockcroft-Gault carries higher risk. Models adjust for age, sex, ECOG score, ICI use and Cockcroft-Gault CrCl, plus baseline haemoglobin (anemia), baseline platelets (thrombocytopenia) or both (composite cytopenia outcomes).</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -481,41 +493,43 @@ window.Quarto = {
 <span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>  beta   <span class="ot">&lt;-</span> fit<span class="sc">$</span>coef[<span class="dv">1</span>]</span>
 <span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>  V_beta <span class="ot">&lt;-</span> fit<span class="sc">$</span>var[<span class="dv">1</span>, <span class="dv">1</span>]</span>
-<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>  subtitle_str <span class="ot">&lt;-</span> <span class="fu">.hr_subtitle</span>(beta, V_beta, <span class="at">scale =</span> <span class="fl">0.1</span>,</span>
-<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>                               <span class="at">hr_type =</span> <span class="st">"subHR"</span>,</span>
-<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>                               <span class="at">unit_label =</span> <span class="st">"per 0.1-unit increase in eGFR difference"</span>)</span>
-<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>  ref_x  <span class="ot">&lt;-</span> <span class="fu">median</span>(d<span class="sc">$</span>egfr_difference, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>  grid_x <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fu">quantile</span>(d<span class="sc">$</span>egfr_difference, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>                <span class="fu">quantile</span>(d<span class="sc">$</span>egfr_difference, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>                <span class="at">length.out =</span> <span class="dv">100</span>)</span>
-<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>  log_hr <span class="ot">&lt;-</span> beta <span class="sc">*</span> (grid_x <span class="sc">-</span> ref_x)</span>
-<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>  se     <span class="ot">&lt;-</span> <span class="fu">sqrt</span>((grid_x <span class="sc">-</span> ref_x)<span class="sc">^</span><span class="dv">2</span> <span class="sc">*</span> V_beta)</span>
-<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>  df_plot <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
-<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">x     =</span> grid_x,</span>
-<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">subhr =</span> <span class="fu">exp</span>(log_hr),</span>
-<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">lcl   =</span> <span class="fu">exp</span>(log_hr <span class="sc">-</span> <span class="fl">1.96</span> <span class="sc">*</span> se),</span>
-<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">ucl   =</span> <span class="fu">exp</span>(log_hr <span class="sc">+</span> <span class="fl">1.96</span> <span class="sc">*</span> se)</span>
-<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(df_plot, <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> subhr)) <span class="sc">+</span></span>
-<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_ribbon</span>(<span class="fu">aes</span>(<span class="at">ymin =</span> lcl, <span class="at">ymax =</span> ucl), <span class="at">alpha =</span> <span class="fl">0.2</span>, <span class="at">fill =</span> <span class="st">"darkorange"</span>) <span class="sc">+</span></span>
-<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">color =</span> <span class="st">"darkorange"</span>, <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">1</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>, <span class="at">color =</span> <span class="st">"grey50"</span>) <span class="sc">+</span></span>
-<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> ref_x, <span class="at">linetype =</span> <span class="st">"dotted"</span>, <span class="at">color =</span> <span class="st">"grey40"</span>) <span class="sc">+</span></span>
-<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">x =</span> <span class="fu">expression</span>(<span class="fu">paste</span>(<span class="st">"eGFR difference  =  (eGFR"</span>[CR<span class="sc">-</span>CYS],</span>
-<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>                              <span class="st">" − CrCl"</span>[CG], <span class="st">") / CrCl"</span>[CG])),</span>
-<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"subHR (95% CI)"</span>,</span>
-<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>         <span class="at">title =</span> outcome_label,</span>
-<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>         <span class="at">subtitle =</span> subtitle_str) <span class="sc">+</span></span>
-<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_cartesian</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="fl">0.35</span>, <span class="fl">0.45</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">4</span>)) <span class="sc">+</span></span>
-<span id="cb7-53"><a href="#cb7-53" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
-<span id="cb7-54"><a href="#cb7-54" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme</span>(<span class="at">plot.subtitle =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">12</span>, <span class="at">color =</span> <span class="st">"grey25"</span>)) <span class="ot">-&gt;</span> p</span>
-<span id="cb7-55"><a href="#cb7-55" aria-hidden="true" tabindex="-1"></a>  <span class="fu">.save_plot_pptx</span>(p)</span>
-<span id="cb7-56"><a href="#cb7-56" aria-hidden="true" tabindex="-1"></a>  p</span>
-<span id="cb7-57"><a href="#cb7-57" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># egfr_difference is in percentage points, so beta is per 1 pp. Report per</span></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 10 % DECREASE =&gt; scale = -10 (negative direction handled in .hr_subtitle).</span></span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>  subtitle_str <span class="ot">&lt;-</span> <span class="fu">.hr_subtitle</span>(beta, V_beta, <span class="at">scale =</span> <span class="sc">-</span><span class="dv">10</span>,</span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>                               <span class="at">hr_type =</span> <span class="st">"subHR"</span>,</span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>                               <span class="at">unit_label =</span> <span class="st">"per 10% decrease"</span>)</span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>  ref_x  <span class="ot">&lt;-</span> <span class="fu">median</span>(d<span class="sc">$</span>egfr_difference, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>  grid_x <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fu">quantile</span>(d<span class="sc">$</span>egfr_difference, <span class="fl">0.025</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a>                <span class="fu">quantile</span>(d<span class="sc">$</span>egfr_difference, <span class="fl">0.975</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>                <span class="at">length.out =</span> <span class="dv">100</span>)</span>
+<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a>  log_hr <span class="ot">&lt;-</span> beta <span class="sc">*</span> (grid_x <span class="sc">-</span> ref_x)</span>
+<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>  se     <span class="ot">&lt;-</span> <span class="fu">sqrt</span>((grid_x <span class="sc">-</span> ref_x)<span class="sc">^</span><span class="dv">2</span> <span class="sc">*</span> V_beta)</span>
+<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>  df_plot <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
+<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">x     =</span> grid_x,</span>
+<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">subhr =</span> <span class="fu">exp</span>(log_hr),</span>
+<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">lcl   =</span> <span class="fu">exp</span>(log_hr <span class="sc">-</span> <span class="fl">1.96</span> <span class="sc">*</span> se),</span>
+<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">ucl   =</span> <span class="fu">exp</span>(log_hr <span class="sc">+</span> <span class="fl">1.96</span> <span class="sc">*</span> se)</span>
+<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(df_plot, <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> subhr)) <span class="sc">+</span></span>
+<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_ribbon</span>(<span class="fu">aes</span>(<span class="at">ymin =</span> lcl, <span class="at">ymax =</span> ucl), <span class="at">alpha =</span> <span class="fl">0.2</span>, <span class="at">fill =</span> <span class="st">"darkorange"</span>) <span class="sc">+</span></span>
+<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">color =</span> <span class="st">"darkorange"</span>, <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">1</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>, <span class="at">color =</span> <span class="st">"grey50"</span>) <span class="sc">+</span></span>
+<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> ref_x, <span class="at">linetype =</span> <span class="st">"dotted"</span>, <span class="at">color =</span> <span class="st">"grey40"</span>) <span class="sc">+</span></span>
+<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"eGFR difference (%)"</span>,</span>
+<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"subHR (95% CI)"</span>,</span>
+<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>         <span class="at">title =</span> outcome_label,</span>
+<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a>         <span class="at">subtitle =</span> subtitle_str) <span class="sc">+</span></span>
+<span id="cb7-53"><a href="#cb7-53" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_x_continuous</span>(<span class="at">breaks =</span> <span class="fu">seq</span>(<span class="sc">-</span><span class="dv">100</span>, <span class="dv">100</span>, <span class="dv">10</span>)) <span class="sc">+</span></span>
+<span id="cb7-54"><a href="#cb7-54" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_cartesian</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">35</span>, <span class="dv">45</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">4</span>)) <span class="sc">+</span></span>
+<span id="cb7-55"><a href="#cb7-55" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
+<span id="cb7-56"><a href="#cb7-56" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme</span>(<span class="at">plot.subtitle =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">10</span>, <span class="at">color =</span> <span class="st">"grey25"</span>)) <span class="ot">-&gt;</span> p</span>
+<span id="cb7-57"><a href="#cb7-57" aria-hidden="true" tabindex="-1"></a>  <span class="fu">.save_plot_pptx</span>(p)</span>
+<span id="cb7-58"><a href="#cb7-58" aria-hidden="true" tabindex="-1"></a>  p</span>
+<span id="cb7-59"><a href="#cb7-59" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 </div>
 <section id="anemia-grade-2" class="level2">
