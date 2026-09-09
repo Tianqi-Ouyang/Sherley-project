@@ -524,7 +524,8 @@ window.Quarto = {
 <section id="predicted-dosing-in-the-egfr-difference-10-subgroup" class="level1">
 <h1>4 Predicted Dosing in the eGFR Difference ≤ −10 % Subgroup</h1>
 <p>The patients who would meet the <strong>−10 % randomization cutoff</strong> — those whose BSA-adjusted CKD-EPI Cr-Cys eGFR sits at least 10 % below their Cockcroft-Gault creatinine clearance. For this subgroup the table contrasts the carboplatin dose the Calvert formula would have produced from each kidney-function estimator against the dose actually given.</p>
-<p>Predicted doses use Calvert at the patient’s own target AUC: <code>dose = AUC × (eGFR + 25)</code>, with eGFR capped at 125 mL/min in both arms (<code>carbo_dose_cre_cys</code> for CKD-EPI Cr-Cys; <code>AUC × (min(CG, 125) + 25)</code> for Cockcroft-Gault).</p>
+<p>Predicted doses use Calvert at the patient’s own target AUC: <code>dose = AUC × (min(eGFR, 125) + 25)</code>. <strong>Both arms cap the filtration estimate at 125 mL/min</strong>, so the comparison is symmetric — <code>carbo_dose_cre_cys</code> from the data pipeline already applies the cap (verified: it reproduces the capped formula exactly, and differs from the uncapped one by up to 53 mg), and the Cockcroft-Gault arm applies the same <code>min(CG, 125)</code>.</p>
+<p>The cap binds more often on the Cockcroft-Gault side in this subgroup — 11 of 39 patients exceed 125 mL/min by CG versus 3 of 39 by CKD-EPI Cr-Cys — which is expected, since the subgroup is selected for CG running high relative to Cr-Cys. The cap is therefore doing real work here: without it the Cr-Cys − CG dose gap would widen from <strong>−75.1 (41.1) mg</strong> to <strong>−113.2 (87.4) mg</strong>.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
