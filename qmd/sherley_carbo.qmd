@@ -173,7 +173,17 @@ dat <- dat %>%
                  "75 to 99.99", ">=100"),
       right = FALSE, include.lowest = TRUE),
     cockcroft_per10 = cockcroft / 10,
-    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10
+    ckd_epi_per10   = ckd_epi_gfr_cre_cys_unindex / 10,
+    # KDIGO CKD G-stage from the 2021 CKD-EPI creatinine-cystatin C eGFR.
+    # Staging uses the INDEXED equation (mL/min/1.73 m2, ckd_epi_gfr_cre_cys),
+    # not the BSA-adjusted one used for dosing — KDIGO thresholds are defined
+    # on the indexed scale.
+    ckd_stage_crcys = cut(ckd_epi_gfr_cre_cys,
+      breaks = c(-Inf, 15, 30, 45, 60, 90, Inf), right = FALSE,
+      labels = c("G5 (<15)", "G4 (15-29)", "G3b (30-44)",
+                 "G3a (45-59)", "G2 (60-89)", "G1 (>=90)")) %>%
+      factor(levels = c("G1 (>=90)", "G2 (60-89)", "G3a (45-59)",
+                        "G3b (30-44)", "G4 (15-29)", "G5 (<15)"))
   )
 
 cat("Carboplatin cohort N =", nrow(dat), "\n")
@@ -300,13 +310,14 @@ dat %>%
     pre_HGB_45days, pre_PLT_45days, pre_ALB_45days,
     baseline_cys_c, baseline_cre, cr_cys,
     baseline_cre_egfr, baseline_cys_c_egfr,
-    ckd_epi_gfr_cre_cys, ckd_epi_gfr_cre_cys_unindex,
+    ckd_epi_gfr_cre_cys, ckd_stage_crcys, ckd_epi_gfr_cre_cys_unindex,
     cockcroft, egfr_ratio
   ) %>%
   tbl_summary(
     statistic = list(age ~ "{median} ({p25}, {p75})"),
     label = list(
       ckd_epi_gfr_cre_cys         ~ "eGFR CKD-EPI Cr-Cys, indexed (mL/min/1.73 m²)",
+      ckd_stage_crcys             ~ "CKD stage (KDIGO G-stage, from indexed eGFR CKD-EPI Cr-Cys 2021)",
       ckd_epi_gfr_cre_cys_unindex ~ "BSA-adjusted eGFR CKD-EPI Cr-Cys (mL/min)",
       cockcroft                   ~ "Cockcroft-Gault CrCl (mL/min)",
       egfr_ratio                  ~ "eGFR ratio: CKD-EPI Cr-Cys / CG"
