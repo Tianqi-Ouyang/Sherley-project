@@ -440,7 +440,101 @@ plot_subhr_linear_diff("cmp_time_side_effect", "cmp_status_side_effect",
                        NULL, "Platinum-Related Hospitalization (Carboplatin)")
 ```
 
-# 6 Downloadable PowerPoint Plots
+# 6 Adjusted CIF — eGFR Difference < −10 % vs Others (Platinum-Related Hospitalisation)
+
+Standardized cumulative incidence function contrasting patients with
+`egfr_difference < -10 %` (red, "exposed" — the randomization group) against all
+other patients (blue, "reference"). Multivariable Fine-Gray model fit with the
+binary exposure plus this cohort's adjuster set (`age`, `sex`, `ecog_score`,
+`ici`, `cockcroft`); Cockcroft-Gault is retained as an adjuster so the difference
+variable carries no residual creatinine-clearance information. Curves are
+*adjusted (standardized)* via g-computation: for every patient predict the CIF
+under exposure = 1 and under exposure = 0, then average the two CIF curves over
+the whole cohort. Y-axis is cumulative incidence of platinum-related
+hospitalisation, x-axis is days from baseline; death is the competing event.
+
+```{r}
+#| label: jx-grant-adjcif-egfrdiff-sideeffect
+#| fig-width: 8
+#| fig-height: 5
+adj_cif_egfrdiff <- function(time_var, status_var, extra_pre = NULL, label) {
+  base_adj <- c("age", "sex", "ecog_score", "ici", "cockcroft")
+  d <- dat %>%
+    dplyr::mutate(egfr_diff_lt_neg10 = as.integer(egfr_difference < -10)) %>%
+    dplyr::select(all_of(c(time_var, status_var, "egfr_diff_lt_neg10",
+                           base_adj, extra_pre))) %>%
+    tidyr::drop_na()
+
+  fmla <- as.formula(paste("~",
+            paste(c("egfr_diff_lt_neg10", base_adj, extra_pre), collapse = " + ")))
+  X_full <- model.matrix(fmla, data = d)[, -1, drop = FALSE]
+
+  stat_num <- suppressWarnings(as.integer(as.character(d[[status_var]])))
+  time_num <- as.numeric(d[[time_var]])
+
+  fit <- tryCatch(
+    cmprsk::crr(ftime = time_num, fstatus = stat_num,
+                cov1 = X_full, failcode = 1),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(.plot_failed(label))
+
+  beta_e <- unname(fit$coef[1])
+  se_e   <- sqrt(fit$var[1, 1])
+  hr     <- exp(beta_e)
+  lcl    <- exp(beta_e - 1.96 * se_e)
+  ucl    <- exp(beta_e + 1.96 * se_e)
+  pval   <- 2 * (1 - pnorm(abs(beta_e / se_e)))
+  p_str  <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+  n_exp  <- sum(d$egfr_diff_lt_neg10 == 1)
+  n_ref  <- sum(d$egfr_diff_lt_neg10 == 0)
+  subtitle_str <- sprintf(
+    "eGFR diff < -10%% (n = %d) vs others (n = %d): subHR = %.2f (95%% CI %.2f-%.2f), p = %s",
+    n_exp, n_ref, hr, lcl, ucl, p_str
+  )
+
+  X0 <- X_full; X0[, "egfr_diff_lt_neg10"] <- 0
+  X1 <- X_full; X1[, "egfr_diff_lt_neg10"] <- 1
+
+  pred0 <- predict(fit, X0)
+  pred1 <- predict(fit, X1)
+
+  times <- pred0[, 1]
+  cif0  <- rowMeans(pred0[, -1, drop = FALSE])
+  cif1  <- rowMeans(pred1[, -1, drop = FALSE])
+
+  df <- bind_rows(
+    tibble(time = times, cif = cif0, group = "eGFR diff ≥ -10 % (others)"),
+    tibble(time = times, cif = cif1, group = "eGFR diff < -10 % (exposed)")
+  )
+  df$group <- factor(df$group,
+                     levels = c("eGFR diff < -10 % (exposed)",
+                                "eGFR diff ≥ -10 % (others)"))
+
+  ymax <- max(df$cif, na.rm = TRUE)
+
+  ggplot(df, aes(x = time, y = cif, color = group)) +
+    geom_step(linewidth = 1) +
+    scale_color_manual(values = c("eGFR diff < -10 % (exposed)" = "#E31A1C",
+                                  "eGFR diff ≥ -10 % (others)"  = "#1F78B4")) +
+    coord_cartesian(ylim = c(0, max(0.05, ymax * 1.05))) +
+    labs(x = "Days from baseline",
+         y = "Cumulative incidence",
+         color = NULL,
+         title = label,
+         subtitle = subtitle_str) +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "top",
+          plot.subtitle = element_text(size = 12, color = "grey25")) -> p
+  .save_plot_pptx(p)
+  p
+}
+
+adj_cif_egfrdiff("cmp_time_side_effect", "cmp_status_side_effect",
+                 NULL, "Platinum-Related Hospitalisation — eGFR diff < -10 % vs others")
+```
+
+# 7 Downloadable PowerPoint Plots
 
 Every figure on this page is also saved as an editable **PowerPoint slide**
 (vector graphics — text and shapes remain editable in PowerPoint). Click any

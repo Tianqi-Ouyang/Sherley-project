@@ -206,7 +206,8 @@ window.Quarto = {
   <li><a href="#overall-hospitalization" id="toc-overall-hospitalization" class="nav-link" data-scroll-target="#overall-hospitalization">5.9 Overall Hospitalization</a></li>
   <li><a href="#platinum-related-hospitalization" id="toc-platinum-related-hospitalization" class="nav-link" data-scroll-target="#platinum-related-hospitalization">5.10 Platinum-Related Hospitalization</a></li>
   </ul></li>
-  <li><a href="#downloadable-powerpoint-plots" id="toc-downloadable-powerpoint-plots" class="nav-link" data-scroll-target="#downloadable-powerpoint-plots">6 Downloadable PowerPoint Plots</a></li>
+  <li><a href="#adjusted-cif-egfr-difference-10-vs-others-platinum-related-hospitalisation" id="toc-adjusted-cif-egfr-difference-10-vs-others-platinum-related-hospitalisation" class="nav-link" data-scroll-target="#adjusted-cif-egfr-difference-10-vs-others-platinum-related-hospitalisation">6 Adjusted CIF — eGFR Difference &lt; −10 % vs Others (Platinum-Related Hospitalisation)</a></li>
+  <li><a href="#downloadable-powerpoint-plots" id="toc-downloadable-powerpoint-plots" class="nav-link" data-scroll-target="#downloadable-powerpoint-plots">7 Downloadable PowerPoint Plots</a></li>
   </ul>
 </nav>
     </div>
@@ -867,22 +868,116 @@ window.Quarto = {
 </div>
 </section>
 </section>
+<section id="adjusted-cif-egfr-difference-10-vs-others-platinum-related-hospitalisation" class="level1">
+<h1>6 Adjusted CIF — eGFR Difference &lt; −10 % vs Others (Platinum-Related Hospitalisation)</h1>
+<p>Standardized cumulative incidence function contrasting patients with <code>egfr_difference &lt; -10 %</code> (red, “exposed” — the randomization group) against all other patients (blue, “reference”). Multivariable Fine-Gray model fit with the binary exposure plus this cohort’s adjuster set (<code>age</code>, <code>sex</code>, <code>ecog_score</code>, <code>ici</code>, <code>cockcroft</code>); Cockcroft-Gault is retained as an adjuster so the difference variable carries no residual creatinine-clearance information. Curves are <em>adjusted (standardized)</em> via g-computation: for every patient predict the CIF under exposure = 1 and under exposure = 0, then average the two CIF curves over the whole cohort. Y-axis is cumulative incidence of platinum-related hospitalisation, x-axis is days from baseline; death is the competing event.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>adj_cif_egfrdiff <span class="ot">&lt;-</span> <span class="cf">function</span>(time_var, status_var, <span class="at">extra_pre =</span> <span class="cn">NULL</span>, label) {</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  base_adj <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"age"</span>, <span class="st">"sex"</span>, <span class="st">"ecog_score"</span>, <span class="st">"ici"</span>, <span class="st">"cockcroft"</span>)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  d <span class="ot">&lt;-</span> dat <span class="sc">%&gt;%</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">egfr_diff_lt_neg10 =</span> <span class="fu">as.integer</span>(egfr_difference <span class="sc">&lt;</span> <span class="sc">-</span><span class="dv">10</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="fu">all_of</span>(<span class="fu">c</span>(time_var, status_var, <span class="st">"egfr_diff_lt_neg10"</span>,</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>                           base_adj, extra_pre))) <span class="sc">%&gt;%</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    tidyr<span class="sc">::</span><span class="fu">drop_na</span>()</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  fmla <span class="ot">&lt;-</span> <span class="fu">as.formula</span>(<span class="fu">paste</span>(<span class="st">"~"</span>,</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>            <span class="fu">paste</span>(<span class="fu">c</span>(<span class="st">"egfr_diff_lt_neg10"</span>, base_adj, extra_pre), <span class="at">collapse =</span> <span class="st">" + "</span>)))</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>  X_full <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(fmla, <span class="at">data =</span> d)[, <span class="sc">-</span><span class="dv">1</span>, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  stat_num <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">as.integer</span>(<span class="fu">as.character</span>(d[[status_var]])))</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>  time_num <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(d[[time_var]])</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>  fit <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>(</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>    cmprsk<span class="sc">::</span><span class="fu">crr</span>(<span class="at">ftime =</span> time_num, <span class="at">fstatus =</span> stat_num,</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>                <span class="at">cov1 =</span> X_full, <span class="at">failcode =</span> <span class="dv">1</span>),</span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">error =</span> <span class="cf">function</span>(e) <span class="cn">NULL</span></span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.null</span>(fit)) <span class="fu">return</span>(<span class="fu">.plot_failed</span>(label))</span>
+<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-23"><a href="#cb20-23" aria-hidden="true" tabindex="-1"></a>  beta_e <span class="ot">&lt;-</span> <span class="fu">unname</span>(fit<span class="sc">$</span>coef[<span class="dv">1</span>])</span>
+<span id="cb20-24"><a href="#cb20-24" aria-hidden="true" tabindex="-1"></a>  se_e   <span class="ot">&lt;-</span> <span class="fu">sqrt</span>(fit<span class="sc">$</span>var[<span class="dv">1</span>, <span class="dv">1</span>])</span>
+<span id="cb20-25"><a href="#cb20-25" aria-hidden="true" tabindex="-1"></a>  hr     <span class="ot">&lt;-</span> <span class="fu">exp</span>(beta_e)</span>
+<span id="cb20-26"><a href="#cb20-26" aria-hidden="true" tabindex="-1"></a>  lcl    <span class="ot">&lt;-</span> <span class="fu">exp</span>(beta_e <span class="sc">-</span> <span class="fl">1.96</span> <span class="sc">*</span> se_e)</span>
+<span id="cb20-27"><a href="#cb20-27" aria-hidden="true" tabindex="-1"></a>  ucl    <span class="ot">&lt;-</span> <span class="fu">exp</span>(beta_e <span class="sc">+</span> <span class="fl">1.96</span> <span class="sc">*</span> se_e)</span>
+<span id="cb20-28"><a href="#cb20-28" aria-hidden="true" tabindex="-1"></a>  pval   <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pnorm</span>(<span class="fu">abs</span>(beta_e <span class="sc">/</span> se_e)))</span>
+<span id="cb20-29"><a href="#cb20-29" aria-hidden="true" tabindex="-1"></a>  p_str  <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(pval <span class="sc">&lt;</span> <span class="fl">0.001</span>, <span class="st">"&lt;0.001"</span>, <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, pval))</span>
+<span id="cb20-30"><a href="#cb20-30" aria-hidden="true" tabindex="-1"></a>  n_exp  <span class="ot">&lt;-</span> <span class="fu">sum</span>(d<span class="sc">$</span>egfr_diff_lt_neg10 <span class="sc">==</span> <span class="dv">1</span>)</span>
+<span id="cb20-31"><a href="#cb20-31" aria-hidden="true" tabindex="-1"></a>  n_ref  <span class="ot">&lt;-</span> <span class="fu">sum</span>(d<span class="sc">$</span>egfr_diff_lt_neg10 <span class="sc">==</span> <span class="dv">0</span>)</span>
+<span id="cb20-32"><a href="#cb20-32" aria-hidden="true" tabindex="-1"></a>  subtitle_str <span class="ot">&lt;-</span> <span class="fu">sprintf</span>(</span>
+<span id="cb20-33"><a href="#cb20-33" aria-hidden="true" tabindex="-1"></a>    <span class="st">"eGFR diff &lt; -10%% (n = %d) vs others (n = %d): subHR = %.2f (95%% CI %.2f-%.2f), p = %s"</span>,</span>
+<span id="cb20-34"><a href="#cb20-34" aria-hidden="true" tabindex="-1"></a>    n_exp, n_ref, hr, lcl, ucl, p_str</span>
+<span id="cb20-35"><a href="#cb20-35" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb20-36"><a href="#cb20-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-37"><a href="#cb20-37" aria-hidden="true" tabindex="-1"></a>  X0 <span class="ot">&lt;-</span> X_full; X0[, <span class="st">"egfr_diff_lt_neg10"</span>] <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb20-38"><a href="#cb20-38" aria-hidden="true" tabindex="-1"></a>  X1 <span class="ot">&lt;-</span> X_full; X1[, <span class="st">"egfr_diff_lt_neg10"</span>] <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb20-39"><a href="#cb20-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-40"><a href="#cb20-40" aria-hidden="true" tabindex="-1"></a>  pred0 <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit, X0)</span>
+<span id="cb20-41"><a href="#cb20-41" aria-hidden="true" tabindex="-1"></a>  pred1 <span class="ot">&lt;-</span> <span class="fu">predict</span>(fit, X1)</span>
+<span id="cb20-42"><a href="#cb20-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-43"><a href="#cb20-43" aria-hidden="true" tabindex="-1"></a>  times <span class="ot">&lt;-</span> pred0[, <span class="dv">1</span>]</span>
+<span id="cb20-44"><a href="#cb20-44" aria-hidden="true" tabindex="-1"></a>  cif0  <span class="ot">&lt;-</span> <span class="fu">rowMeans</span>(pred0[, <span class="sc">-</span><span class="dv">1</span>, <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb20-45"><a href="#cb20-45" aria-hidden="true" tabindex="-1"></a>  cif1  <span class="ot">&lt;-</span> <span class="fu">rowMeans</span>(pred1[, <span class="sc">-</span><span class="dv">1</span>, <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb20-46"><a href="#cb20-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-47"><a href="#cb20-47" aria-hidden="true" tabindex="-1"></a>  df <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(</span>
+<span id="cb20-48"><a href="#cb20-48" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tibble</span>(<span class="at">time =</span> times, <span class="at">cif =</span> cif0, <span class="at">group =</span> <span class="st">"eGFR diff ≥ -10 % (others)"</span>),</span>
+<span id="cb20-49"><a href="#cb20-49" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tibble</span>(<span class="at">time =</span> times, <span class="at">cif =</span> cif1, <span class="at">group =</span> <span class="st">"eGFR diff &lt; -10 % (exposed)"</span>)</span>
+<span id="cb20-50"><a href="#cb20-50" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb20-51"><a href="#cb20-51" aria-hidden="true" tabindex="-1"></a>  df<span class="sc">$</span>group <span class="ot">&lt;-</span> <span class="fu">factor</span>(df<span class="sc">$</span>group,</span>
+<span id="cb20-52"><a href="#cb20-52" aria-hidden="true" tabindex="-1"></a>                     <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"eGFR diff &lt; -10 % (exposed)"</span>,</span>
+<span id="cb20-53"><a href="#cb20-53" aria-hidden="true" tabindex="-1"></a>                                <span class="st">"eGFR diff ≥ -10 % (others)"</span>))</span>
+<span id="cb20-54"><a href="#cb20-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-55"><a href="#cb20-55" aria-hidden="true" tabindex="-1"></a>  ymax <span class="ot">&lt;-</span> <span class="fu">max</span>(df<span class="sc">$</span>cif, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb20-56"><a href="#cb20-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-57"><a href="#cb20-57" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(df, <span class="fu">aes</span>(<span class="at">x =</span> time, <span class="at">y =</span> cif, <span class="at">color =</span> group)) <span class="sc">+</span></span>
+<span id="cb20-58"><a href="#cb20-58" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_step</span>(<span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb20-59"><a href="#cb20-59" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"eGFR diff &lt; -10 % (exposed)"</span> <span class="ot">=</span> <span class="st">"#E31A1C"</span>,</span>
+<span id="cb20-60"><a href="#cb20-60" aria-hidden="true" tabindex="-1"></a>                                  <span class="st">"eGFR diff ≥ -10 % (others)"</span>  <span class="ot">=</span> <span class="st">"#1F78B4"</span>)) <span class="sc">+</span></span>
+<span id="cb20-61"><a href="#cb20-61" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_cartesian</span>(<span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fu">max</span>(<span class="fl">0.05</span>, ymax <span class="sc">*</span> <span class="fl">1.05</span>))) <span class="sc">+</span></span>
+<span id="cb20-62"><a href="#cb20-62" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Days from baseline"</span>,</span>
+<span id="cb20-63"><a href="#cb20-63" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"Cumulative incidence"</span>,</span>
+<span id="cb20-64"><a href="#cb20-64" aria-hidden="true" tabindex="-1"></a>         <span class="at">color =</span> <span class="cn">NULL</span>,</span>
+<span id="cb20-65"><a href="#cb20-65" aria-hidden="true" tabindex="-1"></a>         <span class="at">title =</span> label,</span>
+<span id="cb20-66"><a href="#cb20-66" aria-hidden="true" tabindex="-1"></a>         <span class="at">subtitle =</span> subtitle_str) <span class="sc">+</span></span>
+<span id="cb20-67"><a href="#cb20-67" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
+<span id="cb20-68"><a href="#cb20-68" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"top"</span>,</span>
+<span id="cb20-69"><a href="#cb20-69" aria-hidden="true" tabindex="-1"></a>          <span class="at">plot.subtitle =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">12</span>, <span class="at">color =</span> <span class="st">"grey25"</span>)) <span class="ot">-&gt;</span> p</span>
+<span id="cb20-70"><a href="#cb20-70" aria-hidden="true" tabindex="-1"></a>  <span class="fu">.save_plot_pptx</span>(p)</span>
+<span id="cb20-71"><a href="#cb20-71" aria-hidden="true" tabindex="-1"></a>  p</span>
+<span id="cb20-72"><a href="#cb20-72" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb20-73"><a href="#cb20-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-74"><a href="#cb20-74" aria-hidden="true" tabindex="-1"></a><span class="fu">adj_cif_egfrdiff</span>(<span class="st">"cmp_time_side_effect"</span>, <span class="st">"cmp_status_side_effect"</span>,</span>
+<span id="cb20-75"><a href="#cb20-75" aria-hidden="true" tabindex="-1"></a>                 <span class="cn">NULL</span>, <span class="st">"Platinum-Related Hospitalisation — eGFR diff &lt; -10 % vs others"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="sherley_grant_files/figure-html/jx-grant-adjcif-egfrdiff-sideeffect-1.png" class="img-fluid figure-img" width="768">
+<div class="pptx-link" style="margin:-0.5em 0 1.3em 0;font-size:0.85em;text-align:center;"><a href="../plots/grant/jx_grant_adjcif_egfrdiff_sideeffect.pptx" download>📥 Download editable PowerPoint</a></div>
+</p>
+</figure>
+</div>
+</div>
+</div>
+</section>
 <section id="downloadable-powerpoint-plots" class="level1">
-<h1>6 Downloadable PowerPoint Plots</h1>
+<h1>7 Downloadable PowerPoint Plots</h1>
 <p>Every figure on this page is also saved as an editable <strong>PowerPoint slide</strong> (vector graphics — text and shapes remain editable in PowerPoint). Click any link below to download the .pptx for that figure.</p>
 <details class="code-fold">
 <summary>Code</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>pptx_files <span class="ot">&lt;-</span> <span class="fu">list.files</span>(pptx_dir, <span class="at">pattern =</span> <span class="st">"</span><span class="sc">\\</span><span class="st">.pptx$"</span>, <span class="at">full.names =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(pptx_files) <span class="sc">==</span> <span class="dv">0</span>) {</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"*No PowerPoint files were produced during this render.*</span><span class="sc">\n</span><span class="st">"</span>)</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (f <span class="cf">in</span> <span class="fu">sort</span>(pptx_files)) {</span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    label <span class="ot">&lt;-</span> <span class="fu">gsub</span>(<span class="st">"_"</span>, <span class="st">" "</span>, tools<span class="sc">::</span><span class="fu">file_path_sans_ext</span>(f))</span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"- [📥 %s](../plots/grant/%s)</span><span class="sc">\n</span><span class="st">"</span>, label, f))</span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>pptx_files <span class="ot">&lt;-</span> <span class="fu">list.files</span>(pptx_dir, <span class="at">pattern =</span> <span class="st">"</span><span class="sc">\\</span><span class="st">.pptx$"</span>, <span class="at">full.names =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(pptx_files) <span class="sc">==</span> <span class="dv">0</span>) {</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"*No PowerPoint files were produced during this render.*</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (f <span class="cf">in</span> <span class="fu">sort</span>(pptx_files)) {</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    label <span class="ot">&lt;-</span> <span class="fu">gsub</span>(<span class="st">"_"</span>, <span class="st">" "</span>, tools<span class="sc">::</span><span class="fu">file_path_sans_ext</span>(f))</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"- [📥 %s](../plots/grant/%s)</span><span class="sc">\n</span><span class="st">"</span>, label, f))</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <ul>
+<li><a href="../plots/grant/jx_grant_adjcif_egfrdiff_sideeffect.pptx">📥 jx grant adjcif egfrdiff sideeffect</a></li>
 <li><a href="../plots/grant/jx_grant_egfr_diff_hist.pptx">📥 jx grant egfr diff hist</a></li>
 <li><a href="../plots/grant/jx_grant_linsubhr_diff_aki2.pptx">📥 jx grant linsubhr diff aki2</a></li>
 <li><a href="../plots/grant/jx_grant_linsubhr_diff_akikdigo.pptx">📥 jx grant linsubhr diff akikdigo</a></li>
