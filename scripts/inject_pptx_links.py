@@ -12,9 +12,9 @@ Mapping rule (matches .save_plot_pptx in the qmd setup chunks):
   pptx_slug   = chunk_label with [^A-Za-z0-9]+ collapsed to "_"
   pptx_file   = docs/plots/<subdir>/<pptx_slug>.pptx
 
-Every subdirectory of docs/plots/ is scanned (carbo/, grant/, ...), so new
+Every subdirectory of docs/plots/ is scanned (carbo/, ...), so new
 analysis pages only need their own pptx output directory — no change here.
-Chunk labels are unique per page (jx-carbo-*, jx-grant-*), so a single flat
+Chunk labels are unique per page (e.g. jx-carbo-*), so a single flat
 slug -> file map is unambiguous.
 
 Idempotent: pages that already carry a pptx-link div for a figure are left
