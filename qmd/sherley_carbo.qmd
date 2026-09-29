@@ -2044,26 +2044,7 @@ A total of `r n_excess` (`r pct_excess`%) patients received an excess dose of ca
 
 (Denominator: `r n_with_dx` carboplatin patients with a computable predicted dose.)
 
-# 17 Diagnostic — Local/Early Stage Patients (Record IDs)
-
-The carboplatin cohort contains a small number of patients with `tumor_stage` = **Local/Early**. Their record IDs are listed below — useful for QA / chart review.
-
-```{r}
-#| label: jx-carbo-local-early-ids
-local_early <- dat %>%
-  dplyr::filter(as.character(tumor_stage) %in% c("Local/Early", "1")) %>%
-  dplyr::select(record_id, EMPI, tumor_stage, cancer_type_cat_7, age, sex) %>%
-  dplyr::arrange(record_id)
-
-knitr::kable(
-  local_early,
-  align = c("r","r","l","l","r","l"),
-  caption = sprintf("Carboplatin cohort patients with tumor_stage = Local/Early (N = %d).",
-                    nrow(local_early))
-)
-```
-
-# 18 Downloadable PowerPoint Plots
+# 17 Downloadable PowerPoint Plots
 
 Every figure on this page is also saved as an editable **PowerPoint slide** (vector graphics — text and shapes remain editable in PowerPoint). Click any link below to download the .pptx for that figure.
 
